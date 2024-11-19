@@ -33,57 +33,64 @@ Make sure you have the following installed:
    cd your-repo-name
    ```
 
-npm install
+2. Install dependencies:
+   ```bash
+   npm install
+   # or
+   yarn install
+   # or
+   pnpm install
+   ```
 
-# or
+### Development
 
-yarn install
-
-# or
-
-pnpm install
-
-##Developement
+Run the development server:
+```bash
 npm run dev
-
 # or
-
 yarn dev
-
 # or
-
 pnpm dev
+```
 
-##Setup local Enviorenement
+### Setup Local Environment
 
+Create a `.env.local` file and add the following environment variables:
+```
 DATABASE_URL=mongodb+srv://<username>:<password>@cluster.mongodb.net/your-db-name
 NEXT_PUBLIC_API_URL=http://localhost:3000/api
 JWT_SECRET=your-secret-key
+```
 
-## Folder structure
+## Folder Structure
 
+```
 .
-├── app/
-│ ├── api/ # API routes
-│ ├── components/ # Reusable components
-│ ├── styles/ # Global and module CSS
-│ └── page.tsx # Main entry point for the app
-├── public/ # Static assets
-├── lib/ # Utility functions and helpers
-├── prisma/ # Database schema (if using Prisma)
-├── .env.local # Environment variables
-└── README.md # Project documentation
+├── app/                # API routes
+│   ├── api/           # API routes
+│   ├── components/     # Reusable components
+│   ├── styles/         # Global and module CSS
+│   └── page.tsx        # Main entry point for the app
+├── public/             # Static assets
+├── lib/                # Utility functions and helpers
+├── prisma/             # Database schema (if using Prisma)
+├── .env.local          # Environment variables
+└── README.md           # Project documentation
+```
 
-##
+---
 
-🌐 Deployment
-Deploy your application effortlessly using Vercel.
+## 🌐 Deployment
 
-Push your repository to GitHub or your preferred Git provider.
-Import the project into Vercel:
-For detailed deployment instructions, see Next.js deployment docs.
+Deploy your application effortlessly using Vercel:
 
-📖 Resources
-Next.js Documentation - Comprehensive Next.js guide.
-Learn Next.js - Interactive learning platform.
-MongoDB Documentation - Database setup and usage.
+1. Push your repository to GitHub or your preferred Git provider.
+2. Import the project into Vercel.
+
+For detailed deployment instructions, see the [Next.js deployment docs](https://nextjs.org/docs/deployment).
+
+## 📖 Resources
+
+- [Next.js Documentation](https://nextjs.org/docs) - Comprehensive Next.js guide.
+- [Learn Next.js](https://nextjs.org/learn) - Interactive learning platform.
+- [MongoDB Documentation](https://docs.mongodb.com/) - Database setup and usage.
