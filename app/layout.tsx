@@ -7,6 +7,7 @@ import Login from "@/components/auth/login/users/Login";
 import StreamerRegister from "@/components/auth/register/streamer/StreamerRegister";
 import StreamerLogin from "@/components/auth/login/streamer/StreamerLogin";
 import Otp from "@/components/auth/otp/Otp";
+import ForgetPassword from "@/components/auth/forgetPassword/ForgetPassword";
 
 
 const geistSans = localFont({
@@ -39,7 +40,7 @@ export default function RootLayout({
        <Login/> */}
       {/* <StreamerLogin/> */}
       {/* <StreamerRegister/> */}
-      <Otp/>
+<ForgetPassword/>
         
 
         {/* <UserHome/> */}

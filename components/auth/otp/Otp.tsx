@@ -4,17 +4,16 @@ import { AiOutlineClose } from "react-icons/ai";
 
 const OtpPage = () => {
   return (
-    <div className="flex justify-center items-center min-h-screen bg-[url('/assets/otp/bg.png')] bg-cover relative">
-      <div className="w-full max-w-md px-6 flex justify-center">
+    <div className="w-full flex justify-center items-center min-h-screen bg-[url('/assets/otp/bg.png')] bg-cover relative">
+      <div className="w-full max-w-4xl px-6 flex justify-center">
         <div
           style={{
             backgroundColor: "rgba(21, 22, 25, 0.65)", // Transparent background
             backdropFilter: "blur(16px)", // Blur effect
           }}
-          className="rounded-lg shadow-lg p-8 sm:p-10 z-50 w-[700px]" // Removed opacity class
+          className="rounded-lg shadow-lg  sm:p-8 lg:px-6 z-50 w-full max-w-4xl"
         >
-          <div className="flex flex-col">
-            {/* Rest of the code remains the same */}
+          <div className="flex ml-9 flex-col lg:p-0 p-3">
             <div className="flex gap-64 items-center justify-between w-full mb-6">
               <img src="/assets/otp/Featured icon.png" alt="Featured Icon" />
               <AiOutlineClose
@@ -23,7 +22,7 @@ const OtpPage = () => {
               />
             </div>
 
-            {/* Content with full opacity */}
+            {/* Existing content */}
             <div className="">
               <p className="text-lg text-black font-bold mb-2">
                 Set up two-author authentication
@@ -52,12 +51,7 @@ const OtpPage = () => {
               robertallen@example.com
             </p>
             <div className="text-gray-600 pb-3">Verification code</div>
-            <div className="flex space-x-5 mb-2">
-              <input
-                type="text"
-                className="w-14 h-14 border bg-transparent border-gray-400 rounded text-center text-2xl font-medium focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                maxLength={1}
-              />
+            <div className="flex space-x-5 mb-2 lg:px-0 px-4">
               <input
                 type="text"
                 className="w-14 h-14 border bg-transparent border-gray-400 rounded text-center text-2xl font-medium focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
@@ -96,7 +90,7 @@ const OtpPage = () => {
               <button className="px-14 py-2 bg-gray-300 text-gray-700 hover:bg-gray-400 rounded-lg">
                 Cancel
               </button>
-              <button className="px-14 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg">
+              <button className="px-14 py-2 bg-gradient-to-r from-blue-600 to-violet-600 text-white hover:bg-blue-700 rounded-lg">
                 Confirm
               </button>
             </div>
