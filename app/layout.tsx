@@ -3,9 +3,10 @@ import localFont from "next/font/local";
 import "./globals.css";
 import Navbar from "@/components/Home/LandingPages/Navbar";
 import UserHome from "@/components/Home/LandingPages/UserHome";
-import Login from "@/components/auth/Common/Login/Login";
-import StreamerRegister from "@/components/auth/Streamer/StreamerRegister";
-import StreamerLogin from "@/components/auth/Streamer/StreamerLogin";
+import Login from "@/components/auth/login/users/Login";
+import StreamerRegister from "@/components/auth/register/streamer/StreamerRegister";
+import StreamerLogin from "@/components/auth/login/streamer/StreamerLogin";
+import Otp from "@/components/auth/otp/Otp";
 
 
 const geistSans = localFont({
@@ -36,7 +37,9 @@ export default function RootLayout({
       >
         {/* <Navbar/>
        <Login/> */}
-      <StreamerLogin/>
+      {/* <StreamerLogin/> */}
+      {/* <StreamerRegister/> */}
+      <Otp/>
         
 
         {/* <UserHome/> */}
