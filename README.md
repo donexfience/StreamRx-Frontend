@@ -1,6 +1,6 @@
-# 🎥 [Your App Name] - Streaming Platform
+# 🎥 [StreamRx] - Streaming Platform
 
-Welcome to **[Your App Name]**, a modern streaming application built with [Next.js](https://nextjs.org). Enjoy seamless video playback, personalized recommendations, and a sleek, responsive UI optimized for all devices. 🚀
+Welcome to **[StreamRx]**, a modern streaming application built with [Next.js](https://nextjs.org). Enjoy seamless video playback, personalized recommendations, and a sleek, responsive UI optimized for all devices. 🚀
 
 ## 🌟 Features
 
