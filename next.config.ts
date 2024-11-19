@@ -1,7 +1,23 @@
-import type { NextConfig } from "next";
-
+import { NextConfig } from 'next';
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Enable hostname access
+  webpack: (config, { isServer }) => {
+    return config;
+  },
+  // Optional: Configure allowed hosts if needed
+  headers: async () => {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          {
+            key: 'Access-Control-Allow-Origin',
+            value: '*'  // Be more restrictive in production
+          }
+        ],
+      },
+    ];
+  }
 };
 
-export default nextConfig;
+module.exports = nextConfig;

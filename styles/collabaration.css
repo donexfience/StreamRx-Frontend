@@ -1,0 +1,22 @@
+.custom-line {
+  width: 100%; /* Full width */
+  height: 1px; /* Thickness of the line */
+  background: linear-gradient(
+    to right,
+    #00bcd4 5%,
+    #1a1a24 4%
+  ); /* 30% blue, 70% white */
+  margin: 10px 0; /* Spacing above and below the line */
+}
+.user-background {
+  background-color: #01010c;
+}
+.lower-third {
+  background-color: #15151f;
+}
+.right{
+  background-color: #0B0B16;
+}
+.rightborder{
+  border-color: #191923;
+}

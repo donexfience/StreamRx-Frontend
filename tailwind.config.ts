@@ -12,6 +12,10 @@ export default {
         background: "var(--background)",
         foreground: "var(--foreground)",
       },
+      spacing: {
+        "brand-mobile": "2rem",
+        "brand-desktop": "4rem",
+      },
     },
   },
   plugins: [],

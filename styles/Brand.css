@@ -1,0 +1,11 @@
+@font-face {
+    font-family: 'SuisseIntl';
+    src: url('/fonts/SuisseIntl-Regular.woff2') format('woff2'),
+         url('/fonts/SuisseIntl-Regular.woff') format('woff');
+    font-weight: normal;
+    font-style: normal;
+  }
+  
+  .custom-font {
+    font-family: 'SuisseIntl', Helvetica, Arial, sans-serif
+  }

@@ -1,6 +1,12 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
+import Navbar from "@/components/Home/LandingPages/Navbar";
+import UserHome from "@/components/Home/LandingPages/UserHome";
+import Login from "@/components/auth/Common/Login/Login";
+import StreamerRegister from "@/components/auth/Streamer/StreamerRegister";
+import StreamerLogin from "@/components/auth/Streamer/StreamerLogin";
+
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -28,6 +34,12 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        {/* <Navbar/>
+       <Login/> */}
+      <StreamerLogin/>
+        
+
+        {/* <UserHome/> */}
         {children}
       </body>
     </html>
