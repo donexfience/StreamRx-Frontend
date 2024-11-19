@@ -1,6 +1,21 @@
-import React from "react";
+'use client'
+import React, { useState, useRef } from "react";
 
 const StreamerLogin = () => {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  const togglePlayPause = () => {
+    if (videoRef.current) {
+      if (isPlaying) {
+        videoRef.current.pause();
+      } else {
+        videoRef.current.play();
+      }
+      setIsPlaying(!isPlaying);
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col lg:flex-row">
       {/* Left Side - Login Form */}
@@ -80,22 +95,41 @@ const StreamerLogin = () => {
       </div>
 
       {/* Right Side - Video Preview */}
-      <div className=" lg:flex w-full bg-[url('/assets/login/Aside.png')] bg-cover bg-center lg:w-2/3 xl:w-3/4  p-8 items-center justify-center relative overflow-hidden">
-        {/* Stars Background Effect */}
-        {/* <div className="absolute inset-0">
-          <div className="absolute inset-0 bg-[radial-gradient(white,rgba(255,255,255,.2)_2px,transparent_3px)] bg-[length:50px_50px]" />
-        </div> */}
-
+      <div className="lg:flex w-full bg-[url('/assets/login/Aside.png')] bg-cover bg-center lg:w-2/3 xl:w-3/4 p-8 items-center justify-center relative overflow-hidden">
         {/* Content Container */}
         <div className="relative max-w-3xl w-full space-y-8">
           {/* Video Player Preview */}
           <div className="relative aspect-video bg-gray-900 rounded-lg overflow-hidden">
             {/* Play Button */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center">
-                <div className="w-0 h-0 border-t-8 border-t-transparent border-l-12 border-l-white border-b-8 border-b-transparent ml-1" />
+            <button
+              onClick={togglePlayPause}
+              className="absolute inset-0 flex items-center justify-center z-10 cursor-pointer group"
+            >
+              <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center transition-transform group-hover:scale-110">
+                {isPlaying ? (
+                  // Pause Icon
+                  <div className="flex gap-1">
+                    <div className="w-2 h-8 bg-white"></div>
+                    <div className="w-2 h-8 bg-white"></div>
+                  </div>
+                ) : (
+                  // Play Icon
+                  <div className="w-0 h-0 border-t-8 border-t-transparent border-l-12 border-l-white border-b-8 border-b-transparent ml-1" />
+                )}
               </div>
-            </div>
+            </button>
+
+            {/* Video */}
+            <video
+              ref={videoRef}
+              className="absolute top-0 left-0 w-full h-full object-cover rounded-3xl"
+              src="https://embed-ssl.wistia.com/deliveries/b9bacc2c4222345b70059f6ea87f077268965043.bin?disposition=attachment&filename=hero.mp4"
+              autoPlay={false}
+              preload="auto"
+              muted
+              loop
+              playsInline
+            />
 
             {/* Video Title */}
             <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent">
@@ -105,7 +139,6 @@ const StreamerLogin = () => {
 
               {/* Video Progress Bar */}
               <div className="mt-4 h-1 bg-gray-700 rounded-full">
-                <video src=''
                 <div className="w-1/3 h-full bg-blue-500 rounded-full" />
               </div>
             </div>
