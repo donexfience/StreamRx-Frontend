@@ -1,6 +1,56 @@
-import React from "react";
+"use client";
+import { signIn } from "next-auth/react";
+import React, { useState } from "react";
+
+import { z } from "zod";
+
+const loginSchema = z.object({
+  email: z.string().email("Invalid email format").min(1, "Email is required"),
+  password: z.string().min(6, "Password must be at least 6 characters long"),
+});
 
 const Login = () => {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [errors, setErrors] = useState<{ email?: string; password?: string }>(
+    {}
+  );
+  const [authError, setAuthError] = useState("");
+  // handleing credentaial login
+
+  const handleCredentialsLogin = async () => {
+    try {
+      // Validate inputs
+      const validationResult = loginSchema.safeParse({ email, password });
+      if (!validationResult.success) {
+        const fieldErrors: { email?: string; password?: string } = {};
+        validationResult.error.errors.forEach((error) => {
+          if (error.path[0] === "email") fieldErrors.email = error.message;
+          if (error.path[0] === "password")
+            fieldErrors.password = error.message;
+        });
+        setErrors(fieldErrors);
+        return;
+      }
+
+      // Proceed with sign-in using NextAuth
+      const result = await signIn("credentials", {
+        redirect: false,
+        email,
+        password,
+      });
+
+      if (result?.error) {
+        setAuthError(result.error);
+      } else {
+        window.location.href = "/dashboard";
+      }
+    } catch (err) {
+      console.error("Login error:", err);
+      setAuthError("An unexpected error occurred. Please try again.");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-black px-4 md:px-6 lg:px-8">
       <div className="flex flex-col lg:flex-row max-w-7xl mx-auto pt-8 lg:pt-16">
@@ -60,21 +110,30 @@ const Login = () => {
               {/* Email Input */}
               <input
                 type="email"
+                value={email}
                 placeholder="Email"
+                onChange={(e) => setEmail(e.target.value)}
                 className="w-full bg-transparent border border-gray-800 rounded-lg py-3 px-4 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
               />
-
+              {errors.email && (
+                <p className="text-red-500 text-sm mt-1">{errors.email}</p>
+              )}
               {/* Password Input */}
               <input
                 type="password"
                 placeholder="Password"
                 className="w-full bg-transparent border border-gray-800 rounded-lg py-3 px-4 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                onChange={(e) => setPassword(e.target.value)}
               />
-
+              {errors.password && (
+                <p className="text-red-500 text-sm mt-1">{errors.password}</p>
+              )}
               {/* Action Buttons */}
               <div className="flex flex-col sm:flex-row gap-3">
-                <button className="flex-1 bg-blue-600 text-white rounded-lg py-3 px-4 font-medium hover:bg-blue-700 transition">
-                  Sign Up for Free
+                <button className="flex-1 bg-blue-600 text-white rounded-lg py-3 px-4 font-medium hover:bg-blue-700 transition" 
+                onClick={handleCredentialsLogin}
+                >
+                  Login now
                 </button>
                 <button className="flex-1 bg-gradient-to-r from-blue-500 to-violet-500 text-white rounded-lg py-3 px-4 font-medium hover:bg-purple-700 transition">
                   Login as a Streamer
@@ -84,14 +143,14 @@ const Login = () => {
               {/* Terms and Login Link */}
               <div className="text-sm text-gray-400 mt-4">
                 <p>
-                  By signing up, you agree to the Terms of Service.
+                  By Sign In also, you agree to the Terms of Service.
                   <br />
                   You agree to receive our emails.
                 </p>
                 <div className="mt-4">
                   Already have an account?{" "}
                   <a href="#" className="text-white hover:text-blue-500">
-                    Log in
+                    Signup
                   </a>
                   <a href="#" className="text-white hover:text-blue-500 ml-4">
                     See Our Plans
