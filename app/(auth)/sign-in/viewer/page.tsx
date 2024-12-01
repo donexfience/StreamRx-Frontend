@@ -1,8 +1,11 @@
 "use client";
+import { credentialsLogin } from "@/app/lib/action/auth";
 import { LoginFormSchema } from "@/app/lib/defintion";
 import { useLoginMutation } from "@/redux/services/auth/graphqlAuthApi";
+import { AuthError } from "next-auth";
 import { signIn } from "next-auth/react";
 import React, { useState } from "react";
+import toast from "react-hot-toast";
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -15,42 +18,54 @@ const Login = () => {
 
   const handleCredentialsLogin = async () => {
     try {
-      console.log("Validating inputs...");
-      const validationResult = LoginFormSchema.safeParse({ email, password });
-      if (!validationResult.success) {
-        console.log("Validation failed:", validationResult.error.errors);
-        const fieldErrors: { email?: string; password?: string } = {};
-        validationResult.error.errors.forEach((error) => {
-          if (error.path[0] === "email") fieldErrors.email = error.message;
-          if (error.path[0] === "password")
-            fieldErrors.password = error.message;
-        });
-        setErrors(fieldErrors);
-        return;
-      }
+      const result = await credentialsLogin({ email, password });
 
-      console.log("Inputs validated. Sending login request...");
-      const response = await login({ email, password }).unwrap();
-      console.log("Response received:", response);
-
-      // Safely access response.data and response.data.login
-      const loginData = response?.data?.login;
-
-      if (loginData?.success) {
-        console.log("Login successful", loginData);
+      if (result.success) {
+        toast.success("Login Successful!");
       } else {
-        console.error(
-          "Login failed with message:",
-          loginData?.message || "Unknown error"
-        );
-        setAuthError(loginData?.message || "Login failed");
+        if (result.errors) {
+          setErrors(result.errors);
+        }
+        if (result.message) {
+          toast.error(result.message);
+        }
       }
     } catch (err) {
-      console.error("Error during login attempt:", err);
-      setAuthError("An unexpected error occurred. Please try again.");
+      console.error("Unexpected login error:", err);
+      toast.error("An unexpected error occurred");
     }
   };
 
+  //method for next-auth
+
+  // const handleSignIn = async () => {
+  //   const validationResult = LoginFormSchema.safeParse({ email, password });
+  //   if (!validationResult.success) {
+  //     console.log("Validation failed:", validationResult.error.errors);
+  //     const fieldErrors: { email?: string; password?: string } = {};
+  //     validationResult.error.errors.forEach((error) => {
+  //       if (error.path[0] === "email") fieldErrors.email = error.message;
+  //       if (error.path[0] === "password") fieldErrors.password = error.message;
+  //     });
+  //     setErrors(fieldErrors);
+  //     return;
+  //   }
+  //   console.log("Attempting login..."); // Debugging line
+  //   const result = await signIn("credentials", {
+  //     email,
+  //     password,
+  //     redirect: false,
+  //   });
+  //   console.log(result, "result");
+  //   if (result?.error) {
+  //     console.log("Login failed:", result.error);
+  //     if (result.error === "CredentialsSignin") {
+  //       console.log("kitti");
+  //     } else {
+  //       console.log("else");
+  //     }
+  //   }
+  // };
   return (
     <div className="min-h-screen bg-black px-4 md:px-6 lg:px-8">
       <p className="text-red-400">{authError}</p>
