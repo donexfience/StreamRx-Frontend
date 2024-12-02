@@ -1,9 +1,44 @@
-'use client'
+"use client";
+import {
+  credentialsLogin,
+  credentialsLoginStreamer,
+} from "@/app/lib/action/auth";
+import { useRouter } from "next/navigation";
 import React, { useState, useRef } from "react";
+import toast from "react-hot-toast";
 
 const StreamerLogin = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [errors, setErrors] = useState<{ email?: string; password?: string }>(
+    {}
+  );
+  const handleCredentialsLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const result = await credentialsLoginStreamer({ email, password });
+        console.log(result,"result")
+      if (result.success) {
+        toast.success("Login Successful!");
+        router.push("/streamer-dashboard");
+      } else {
+        if (result.errors) {
+            
+          console.log(result.errors, "errors");
+          setErrors(result.errors);
+        }
+        if (result.message) {
+          toast.error(result.message);
+        }
+      }
+    } catch (err) {
+      console.error("Unexpected login error:", err);
+      // toast.error("An unexpected error occurred");
+    }
+  };
 
   const togglePlayPause = () => {
     if (videoRef.current) {
@@ -65,17 +100,28 @@ const StreamerLogin = () => {
                 type="email"
                 placeholder="Email"
                 className="w-full border border-gray-300 rounded-lg py-3 px-4 text-gray-900 placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
               />
+              {errors.email && (
+                <p className="text-red-500 text-sm mt-1">{errors.email}</p>
+              )}
             </div>
             <div>
               <input
                 type="password"
                 placeholder="Password"
                 className="w-full border border-gray-300 rounded-lg py-3 px-4 text-gray-900 placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
               />
+              {errors.password && (
+                <p className="text-red-500 text-sm mt-1">{errors.password}</p>
+              )}
             </div>
             <button
               type="submit"
+              onClick={handleCredentialsLogin}
               className="w-full bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-700 hover:to-violet-700 text-white rounded-lg py-3 font-medium transition-all"
             >
               Log in

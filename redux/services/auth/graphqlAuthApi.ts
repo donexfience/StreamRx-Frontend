@@ -76,6 +76,34 @@ export const graphqlAuthApi = createApi({
       }),
     }),
 
+    StreamerLogin: builder.mutation<LoginResponse, LoginInput>({
+      query: (input) => ({
+        url: "/graphql",
+        method: "POST",
+        body: {
+          query: `
+            mutation loginStreamer($input: LoginInput!) {
+              loginStreamer(input: $input) {
+                success
+                message
+                user {
+                  id
+                  email
+                  role
+                  isVerified
+                }
+                token {
+                  accessToken
+                  refreshToken
+                }
+              }
+            }
+          `,
+          variables: { input },
+        },
+      }),
+    }),
+
     login: builder.mutation<LoginResponse, LoginInput>({
       query: (input) => ({
         url: "/graphql",
@@ -199,5 +227,6 @@ export const {
   useForgotPasswordMutation,
   useChangePasswordMutation,
   useLogoutMutation,
+  useStreamerLoginMutation,
   useGoogleLoginMutation,
 } = graphqlAuthApi;
