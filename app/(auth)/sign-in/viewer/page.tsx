@@ -4,15 +4,19 @@ import { LoginFormSchema } from "@/app/lib/defintion";
 import { useLoginMutation } from "@/redux/services/auth/graphqlAuthApi";
 import { AuthError } from "next-auth";
 import { signIn } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import React, { useState } from "react";
 import toast from "react-hot-toast";
+import { redirect } from "next/navigation";
 
 const Login = () => {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<{ email?: string; password?: string }>(
     {}
   );
+
   const [authError, setAuthError] = useState("");
   const [login, { isLoading }] = useLoginMutation();
 
@@ -22,6 +26,7 @@ const Login = () => {
 
       if (result.success) {
         toast.success("Login Successful!");
+        router.push("/dashboard");
       } else {
         if (result.errors) {
           setErrors(result.errors);
@@ -32,7 +37,18 @@ const Login = () => {
       }
     } catch (err) {
       console.error("Unexpected login error:", err);
-      toast.error("An unexpected error occurred");
+      // toast.error("An unexpected error occurred");
+    }
+  };
+  const handleGoogleLogin = async () => {
+    try {
+      const result = await signIn("google", { callbackUrl: "/dashboard" }); // Redirect to the home page after login
+      if (result?.error) {
+        toast.error("Google login failed");
+      }
+    } catch (err) {
+      console.error("Google login error:", err);
+      toast.error("An unexpected error occurred during Google login");
     }
   };
 
@@ -106,7 +122,10 @@ const Login = () => {
             {/* Sign Up Form */}
             <div className="space-y-4">
               {/* Google Sign In Button */}
-              <button className="w-full bg-white text-gray-800 rounded-lg py-3 px-4 flex items-center justify-center space-x-2 hover:bg-gray-100 transition">
+              <button
+                onClick={handleGoogleLogin}
+                className="w-full bg-white text-gray-800 rounded-lg py-3 px-4 flex items-center justify-center space-x-2 hover:bg-gray-100 transition"
+              >
                 <img
                   src="/api/placeholder/20/20"
                   alt="Google"
@@ -152,7 +171,10 @@ const Login = () => {
                 >
                   Login now
                 </button>
-                <button className="flex-1 bg-gradient-to-r from-blue-500 to-violet-500 text-white rounded-lg py-3 px-4 font-medium hover:bg-purple-700 transition">
+                <button
+                  className="flex-1 bg-gradient-to-r from-blue-500 to-violet-500 text-white rounded-lg py-3 px-4 font-medium hover:bg-purple-700 transition"
+                  onClick={() => router.push("/sign-in/streamer")}
+                >
                   Login as a Streamer
                 </button>
               </div>

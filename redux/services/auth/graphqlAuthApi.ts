@@ -1,22 +1,32 @@
+import { baseQuery } from "./baseQuery";
 
-import { baseQuery } from './baseQuery';
+import { createApi } from "@reduxjs/toolkit/query/react";
 
-import { createApi } from '@reduxjs/toolkit/query/react'
-
-import { ChangePasswordInput, ChangePasswordResponse, ForgotPasswordResponse, LoginInput, LoginResponse, RegisterationInitateInput, RegistrationInitiateResponse, VerifyRegisterationInput, VerifyRegistrationResponse } from './auth'
-
+import {
+  ChangePasswordInput,
+  ChangePasswordResponse,
+  ForgotPasswordResponse,
+  GoogleLoginInput,
+  GoogleLoginResponse,
+  LoginInput,
+  LoginResponse,
+  RegisterationInitateInput,
+  RegistrationInitiateResponse,
+  VerifyRegisterationInput,
+  VerifyRegistrationResponse,
+} from "./auth";
 
 export const graphqlAuthApi = createApi({
-  reducerPath: 'graphqlAuthApi',
+  reducerPath: "graphqlAuthApi",
   baseQuery,
   endpoints: (builder) => ({
     initiateRegistration: builder.mutation<
-      RegistrationInitiateResponse, 
+      RegistrationInitiateResponse,
       RegisterationInitateInput
     >({
       query: (input) => ({
-        url: '/graphql',
-        method: 'POST',
+        url: "/graphql",
+        method: "POST",
         body: {
           query: `
             mutation InitiateRegistration($input: RegistrationInitiateInput!) {
@@ -33,18 +43,18 @@ export const graphqlAuthApi = createApi({
               }
             }
           `,
-          variables: { input }
-        }
-      })
+          variables: { input },
+        },
+      }),
     }),
 
     verifyRegistration: builder.mutation<
-      VerifyRegistrationResponse, 
+      VerifyRegistrationResponse,
       VerifyRegisterationInput
     >({
       query: ({ email, otp }) => ({
-        url: '/graphql',
-        method: 'POST',
+        url: "/graphql",
+        method: "POST",
         body: {
           query: `
             mutation VerifyRegistration($email: String!, $otp: String!) {
@@ -61,15 +71,15 @@ export const graphqlAuthApi = createApi({
               }
             }
           `,
-          variables: { email, otp }
-        }
-      })
+          variables: { email, otp },
+        },
+      }),
     }),
 
     login: builder.mutation<LoginResponse, LoginInput>({
       query: (input) => ({
-        url: '/graphql',
-        method: 'POST',
+        url: "/graphql",
+        method: "POST",
         body: {
           query: `
             mutation Login($input: LoginInput!) {
@@ -89,20 +99,18 @@ export const graphqlAuthApi = createApi({
               }
             }
           `,
-          variables: { input }
-        }
-      })
+          variables: { input },
+        },
+      }),
     }),
 
-    forgotPassword: builder.mutation<
-      ForgotPasswordResponse, 
-      { email: string }
-    >({
-      query: ({ email }) => ({
-        url: '/graphql',
-        method: 'POST',
-        body: {
-          query: `
+    forgotPassword: builder.mutation<ForgotPasswordResponse, { email: string }>(
+      {
+        query: ({ email }) => ({
+          url: "/graphql",
+          method: "POST",
+          body: {
+            query: `
             mutation ForgotPassword($email: String!) {
               forgotPassword(email: $email) {
                 success
@@ -110,18 +118,19 @@ export const graphqlAuthApi = createApi({
               }
             }
           `,
-          variables: { email }
-        }
-      })
-    }),
+            variables: { email },
+          },
+        }),
+      }
+    ),
 
     changePassword: builder.mutation<
-      ChangePasswordResponse , 
+      ChangePasswordResponse,
       ChangePasswordInput
     >({
       query: (input) => ({
-        url: '/graphql',
-        method: 'POST',
+        url: "/graphql",
+        method: "POST",
         body: {
           query: `
             mutation ChangePassword($input: ChangePasswordInput!) {
@@ -131,15 +140,15 @@ export const graphqlAuthApi = createApi({
               }
             }
           `,
-          variables: { input }
-        }
-      })
+          variables: { input },
+        },
+      }),
     }),
 
     logout: builder.mutation<{ success: boolean }, void>({
       query: () => ({
-        url: '/graphql',
-        method: 'POST',
+        url: "/graphql",
+        method: "POST",
         body: {
           query: `
             mutation Logout {
@@ -147,18 +156,48 @@ export const graphqlAuthApi = createApi({
                 success
               }
             }
-          `
-        }
-      })
-    })
-  })
-})
+          `,
+        },
+      }),
+    }),
+    googleLogin: builder.mutation<GoogleLoginResponse, GoogleLoginInput>({
+      query: (input) => ({
+        url: "/graphql",
+        method: "POST",
+        body: {
+          query: `
+            mutation GoogleLogin($input: GoogleLoginInput!) {
+              googleLogin(input: $input) {
+                success
+                message
+                user {
+                  id
+                  email
+                  name
+                  role
+                  isVerified
+                  isActive
+                }
+                token {
+                  accessToken
+                  refreshToken
+                }
+              }
+            }
+          `,
+          variables: { input },
+        },
+      }),
+    }),
+  }),
+});
 
-export const { 
+export const {
   useInitiateRegistrationMutation,
   useVerifyRegistrationMutation,
   useLoginMutation,
   useForgotPasswordMutation,
   useChangePasswordMutation,
-  useLogoutMutation
-} = graphqlAuthApi
+  useLogoutMutation,
+  useGoogleLoginMutation,
+} = graphqlAuthApi;

@@ -22,6 +22,34 @@ export interface TokenPair {
   refreshToken: string;
 }
 
+// In your auth.ts or types file
+export interface GoogleLoginInput {
+  email: string;
+  name?: string;
+  googleId: string;
+}
+
+export interface GoogleLoginResponse {
+  data: {
+    googleLogin: {
+      success: boolean;
+      message: string;
+      user?: {
+        id: string;
+        email: string;
+        name?: string;
+        role: string;
+        isVerified: boolean;
+        isActive?: boolean;
+      };
+      token?: {
+        accessToken: string;
+        refreshToken: string;
+      };
+    };
+  };
+}
+
 export interface LoginResponse {
   data: {
     login: {

@@ -3,6 +3,8 @@ import { graphqlAuthApi } from "@/redux/services/auth/graphqlAuthApi";
 import { store } from "@/redux/store";
 import { LoginFormSchema } from "../defintion";
 import { cookies } from "next/headers";
+import { setCredentials } from "@/redux/services/auth/authSlice";
+
 
 export async function credentialsLogin(formData: {
   email: string;
@@ -36,19 +38,25 @@ export async function credentialsLogin(formData: {
 
     if (loginData?.success) {
       const cookieStore = await cookies();
-      
+      console.log(loginData.user,"user",loginData.token);
+      store.dispatch(
+        setCredentials({
+          user: loginData.user,
+        })
+      );
+
       cookieStore.set("accessToken", loginData.token.accessToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "strict",
-        maxAge: 120, 
+        maxAge: 120,
       });
 
       cookieStore.set("refreshToken", loginData.token.refreshToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "strict",
-        maxAge: 60 * 60 * 24 * 7, 
+        maxAge: 60 * 60 * 24 * 7,
       });
 
       return {
