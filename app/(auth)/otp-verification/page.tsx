@@ -8,7 +8,7 @@ import {
   useResendOtpMutation,
 } from "@/redux/services/auth/graphqlAuthApi";
 import toast from "react-hot-toast";
-
+import CypherIcon from "/assets/otp/cyber.svg";
 const MAX_RESEND_ATTEMPTS = 3;
 
 const OtpPage = () => {
@@ -132,6 +132,7 @@ const OtpPage = () => {
       }).unwrap();
 
       if (result?.data) {
+        console.log(result?.data, "data after otp verification");
         toast.success("OTP verified successfully!");
         router.replace("/dashboard");
       }
@@ -275,6 +276,13 @@ const OtpPage = () => {
                 Google Authenticator App and enter the verification code below.
               </p>
             </div>
+            <div className="flex justify-center mb-6">
+              <img
+                src="/assets/otp/cyber.png"
+                alt="Verification Process"
+                className="max-w-full h-24 rounded-xl"
+              />
+            </div>
 
             <p className="mt-3 text-lg text-white font-bold mb-2">
               Verify to complete authentication
@@ -306,7 +314,6 @@ const OtpPage = () => {
                 />
               ))}
             </div>
-
             <div className="flex text-white mb-6 mt-6 gap-3 items-center justify-between">
               <span className="text-white font-extrabold">
                 Didn't get a code?

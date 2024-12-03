@@ -4,6 +4,8 @@ import { store } from "@/redux/store";
 import { LoginFormSchema, RegistrationFormSchema } from "../defintion";
 import { cookies } from "next/headers";
 import { setCredentials } from "@/redux/services/auth/authSlice";
+import { NextApiRequest, NextApiResponse } from 'next';
+import { serialize } from 'cookie';
 
 export async function credentialsLogin(formData: {
   email: string;
@@ -225,5 +227,37 @@ export async function credentialsSignup(formData: {
       success: false,
       message: "An unexpected error occurred. Please try again.",
     };
+  }
+}
+
+
+export default function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method === 'POST') {
+    const { accessToken, refreshToken } = req.body;
+
+    if (!accessToken || !refreshToken) {
+      return res.status(400).json({ error: 'Tokens are required' });
+    }
+
+    res.setHeader('Set-Cookie', [
+      serialize('accessToken', accessToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 120, // 2 minutes
+        path: '/',
+      }),
+      serialize('refreshToken', refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 60 * 60 * 24 * 7, 
+        path: '/',
+      }),
+    ]);
+
+    res.status(200).json({ message: 'Cookies set successfully' });
+  } else {
+    res.status(405).json({ error: 'Method not allowed' });
   }
 }

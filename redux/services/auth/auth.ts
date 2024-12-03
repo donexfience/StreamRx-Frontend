@@ -136,7 +136,9 @@ export interface ErrorResponse {
 
 export interface VerifyRegistrationResponse {
   data: {
-    user?: User;
+    verifyRegistration: {
+      user?: User;
+    };
     token?: TokenPair;
   } | null;
   errors?: Array<ErrorResponse>;

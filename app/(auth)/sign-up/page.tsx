@@ -130,7 +130,7 @@ const SignupPage = () => {
   return (
     <div
       style={{ backgroundColor: "#01010C" }}
-      className="min-h-screen flex items-center justify-center px-4"
+      className="pt-10 flex items-center justify-center min-h-screen"
     >
       {/* Card Container with Glow Effect */}
       <div className="relative">
@@ -153,11 +153,11 @@ const SignupPage = () => {
         {/* Card Content */}
         <div
           style={{ backgroundColor: "#000009" }}
-          className="relative backdrop-blur-xl z-10 rounded-3xl p-10 w-[32rem] max-w-2xl min-h-[600px]"
+          className="relative backdrop-blur-xl z-10 rounded-3xl p-10 w-[32rem] max-w-2xl min-h-[700px] shadow-lg border-black"
         >
           {/* Background Image */}
           <img
-            className="absolute w-full object-fill opacity-70 top-[50%] pointer-events-none"
+            className="absolute w-full object-fill opacity-60  pointer-events-none"
             src="/assets/register/gradient.png"
             alt="Background"
           />
