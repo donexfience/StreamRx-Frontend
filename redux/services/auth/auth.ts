@@ -61,11 +61,27 @@ export interface LoginResponse {
   };
 }
 
+export interface RegistrationStatusResponse {
+  data: {
+    registrationStatus: {
+      status: string;
+      message: string;
+      email?: string;
+      createdAt?: string;
+      attemptsRemaining?: number;
+      expiresIn?: number;
+    };
+  };
+}
+
 export interface RegisterationInitateInput {
   email: string;
   password: string;
   bio?: string;
   profileImageUrl?: string;
+  username: string;
+  dateOfBirth: string;
+  phoneNumber: string;
 }
 
 export interface VerifyRegisterationInput {
@@ -88,9 +104,23 @@ export interface TokenPair {
   refreshToken: string;
 }
 
-export interface RegistrationInitiateResponse {
+export interface UserStatus {
+  status: string;
+  message: string;
+  email: string;
+  createdAt: string;
+  attemptsRemaining: number;
+  expiresIn: number;
+}
+export interface InitiateRegistration {
   message: string;
   status: UserStatus;
+}
+
+export interface RegistrationInitiateResponse {
+  data: {
+    initiateRegistration: InitiateRegistration;
+  };
 }
 
 export interface VerifyRegistrationResponse {

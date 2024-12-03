@@ -12,6 +12,7 @@ import {
   LoginResponse,
   RegisterationInitateInput,
   RegistrationInitiateResponse,
+  RegistrationStatusResponse,
   VerifyRegisterationInput,
   VerifyRegistrationResponse,
 } from "./auth";
@@ -29,7 +30,7 @@ export const graphqlAuthApi = createApi({
         method: "POST",
         body: {
           query: `
-            mutation InitiateRegistration($input: RegistrationInitiateInput!) {
+            mutation InitiateRegistration($input: UserCreateInput!) {
               initiateRegistration(input: $input) {
                 message
                 status {
@@ -103,6 +104,29 @@ export const graphqlAuthApi = createApi({
         },
       }),
     }),
+
+    registrationStatus: builder.query<RegistrationStatusResponse, { email: string }>({
+      query: ({ email }) => ({
+        url: "/graphql",
+        method: "POST",
+        body: {
+          query: `
+            query RegistrationStatus($email: String!) {
+              registrationStatus(email: $email) {
+                status
+                message
+                email
+                createdAt
+                attemptsRemaining
+                expiresIn
+              }
+            }
+          `,
+          variables: { email },
+        },
+      }),
+    }),
+
 
     login: builder.mutation<LoginResponse, LoginInput>({
       query: (input) => ({
@@ -229,4 +253,5 @@ export const {
   useLogoutMutation,
   useStreamerLoginMutation,
   useGoogleLoginMutation,
+  useRegistrationStatusQuery
 } = graphqlAuthApi;

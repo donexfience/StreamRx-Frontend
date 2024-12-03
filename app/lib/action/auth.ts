@@ -1,7 +1,7 @@
 "use server";
 import { graphqlAuthApi } from "@/redux/services/auth/graphqlAuthApi";
 import { store } from "@/redux/store";
-import { LoginFormSchema } from "../defintion";
+import { LoginFormSchema, RegistrationFormSchema } from "../defintion";
 import { cookies } from "next/headers";
 import { setCredentials } from "@/redux/services/auth/authSlice";
 
@@ -105,7 +105,7 @@ export async function credentialsLoginStreamer(formData: {
       )
       .unwrap();
     const loginData = response?.data?.login;
-    console.log(loginData,"logindata")
+    console.log(loginData, "logindata");
     if (loginData?.success) {
       const cookieStore = await cookies();
       console.log(loginData.user, "user-streamer", loginData.token);
@@ -141,6 +141,75 @@ export async function credentialsLoginStreamer(formData: {
     };
   } catch (err) {
     console.error("Error during login attempt:", err);
+    return {
+      success: false,
+      message: "An unexpected error occurred. Please try again.",
+    };
+  }
+}
+
+export async function credentialsSignup(formData: {
+  email: string;
+  password: string;
+  username: string;
+  dateOfBirth: string;
+  phoneNumber: string;
+}) {
+  const validationResult = RegistrationFormSchema.safeParse(formData);
+
+  if (!validationResult.success) {
+    const fieldErrors: Partial<{
+      email: string;
+      password: string;
+      username: string;
+      dateOfBirth: string;
+      phoneNumber: string;
+    }> = {};
+
+    validationResult.error.errors.forEach((error) => {
+      const field = error.path[0] as keyof typeof fieldErrors;
+      fieldErrors[field] = error.message;
+    });
+
+    return {
+      success: false,
+      errors: fieldErrors,
+    };
+  }
+
+  try {
+    console.log(formData, "data");
+    const response = await store
+      .dispatch(
+        graphqlAuthApi.endpoints.initiateRegistration.initiate(formData)
+      )
+      .unwrap();
+    const registrationData = response?.data?.initiateRegistration;
+    console.log(registrationData, "registreation data");
+
+    if (registrationData?.status?.message === "OTP verification pending") {
+      console.log("hello in the if of singup action");
+      return {
+        success: true,
+        message: "Registration successful please verify your email ",
+        status: "pending",
+      };
+    }
+
+    if (registrationData?.message === "Registration already initiated") {
+      return {
+        success: true,
+        message: "Already sent OTP. Please wait for 5 minutes.",
+        status: "Already Started",
+      };
+    }
+
+    return {
+      success: false,
+      message: registrationData?.status?.message || "Registration failed",
+    };
+  } catch (err) {
+    console.error("Error during registration attempt:", err);
     return {
       success: false,
       message: "An unexpected error occurred. Please try again.",
