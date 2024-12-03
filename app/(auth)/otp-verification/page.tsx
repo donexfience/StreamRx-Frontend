@@ -9,6 +9,7 @@ import {
 } from "@/redux/services/auth/graphqlAuthApi";
 import toast from "react-hot-toast";
 import CypherIcon from "/assets/otp/cyber.svg";
+import { setAuthCookies } from "@/app/lib/action/auth";
 const MAX_RESEND_ATTEMPTS = 3;
 
 const OtpPage = () => {
@@ -132,16 +133,20 @@ const OtpPage = () => {
       }).unwrap();
 
       if (result?.data) {
-        console.log(result?.data, "data after otp verification");
+        console.log(result?.data, "result");
+        const { accessToken, refreshToken } = result.data.verifyRegistration?.token!;
+        await setAuthCookies(accessToken, refreshToken);
         toast.success("OTP verified successfully!");
         router.replace("/dashboard");
       }
+
       if (result?.errors && result.errors.length > 0) {
         result.errors.forEach((error: { message: string }) => {
           toast.error(error.message);
         });
       }
     } catch (error) {
+      console.log(error, "error");
       toast.error("An unexpected error occurred. Please try again.");
     }
   };

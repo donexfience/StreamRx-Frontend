@@ -138,8 +138,8 @@ export interface VerifyRegistrationResponse {
   data: {
     verifyRegistration: {
       user?: User;
+      token?: TokenPair;
     };
-    token?: TokenPair;
   } | null;
   errors?: Array<ErrorResponse>;
 }
