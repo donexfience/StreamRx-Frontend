@@ -184,6 +184,7 @@ export async function credentialsSignup(formData: {
         graphqlAuthApi.endpoints.initiateRegistration.initiate(formData)
       )
       .unwrap();
+    console.log(response, "response from");
     const registrationData = response?.data?.initiateRegistration;
     console.log(registrationData, "registreation data");
 
@@ -203,7 +204,17 @@ export async function credentialsSignup(formData: {
         status: "Already Started",
       };
     }
-
+    if (
+      response?.errors?.[0]?.message === "User with this email already exists"
+    ) {
+      return {
+        success: false,
+        errors: {
+          email:
+            "This email is already registered. Please use a different email or try logging in.",
+        },
+      };
+    }
     return {
       success: false,
       message: registrationData?.status?.message || "Registration failed",

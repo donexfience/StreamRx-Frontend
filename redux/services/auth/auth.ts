@@ -121,6 +121,11 @@ export interface RegistrationInitiateResponse {
   data: {
     initiateRegistration: InitiateRegistration;
   };
+  errors: [
+    {
+      message: string;
+    }
+  ];
 }
 
 export interface VerifyRegistrationResponse {

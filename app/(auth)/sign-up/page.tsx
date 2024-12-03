@@ -64,11 +64,15 @@ const SignupPage = () => {
         switch (response.status) {
           case "pending":
             console.log("hello");
-            router.push("/otp-verification");
+            router.push(
+              `/otp-verification?email=${encodeURIComponent(formData.email)}`
+            );
             break;
           case "Already Started":
             console.log("hello2");
-            router.push("/otp-verification");
+            router.push(
+              `/otp-verification?email=${encodeURIComponent(formData.email)}`
+            );
             break;
           default:
             setErrors({ general: response.message || "Registration failed" });
@@ -92,7 +96,9 @@ const SignupPage = () => {
       console.log(status, "status page load");
       switch (status) {
         case "pending_verification":
-          router.push("/otp-verification");
+          router.push(
+            `/otp-verification?email=${encodeURIComponent(formData.email)}`
+          );
           break;
         case "verified":
           router.push("/dashboard");
