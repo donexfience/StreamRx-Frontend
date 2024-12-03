@@ -49,16 +49,49 @@ const OtpPage = () => {
   }, []);
 
   useEffect(() => {
-    if (
-      registrationStatus?.data?.registrationStatus?.expiresIn !== undefined &&
-      registrationStatus.data.registrationStatus.expiresIn <= 0
-    ) {
+    let expirationCheckTimeout: NodeJS.Timeout;
+
+    const handleExpiration = () => {
       toast.error(
         "Session expired. Please start the registration process again."
       );
       router.push("/");
+    };
+
+    if (registrationStatus?.data) {
+      const expiresIn = registrationStatus.data.registrationStatus?.expiresIn;
+      console.log(expiresIn, "time left");
+
+      // Check for valid expiresIn
+      if (expiresIn != null) {
+        if (expiresIn <= 0) {
+          handleExpiration();
+        } else {
+          // Schedule expiration based on remaining time
+          expirationCheckTimeout = setTimeout(() => {
+            handleExpiration();
+          }, expiresIn * 1000);
+        }
+      } else {
+        console.log("ExpiresIn is null or undefined, awaiting refetch.");
+        refetch();
+      }
+    } else if (registrationStatus === undefined) {
+      console.log("Registration status is undefined, refetching...");
+      expirationCheckTimeout = setTimeout(() => {
+        refetch();
+      }, 1000); // Retry fetching after 1 second
+    } else {
+      console.log("Unexpected state: Session invalid, redirecting...");
+      handleExpiration();
     }
-  }, [registrationStatus, router]);
+
+    return () => {
+      if (expirationCheckTimeout) {
+        clearTimeout(expirationCheckTimeout);
+      }
+    };
+  }, [registrationStatus, refetch, router]);
 
   const handleChange = (index: number, value: string) => {
     const numericValue = value.replace(/[^0-9]/g, "");
