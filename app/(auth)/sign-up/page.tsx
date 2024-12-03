@@ -2,8 +2,10 @@
 import { credentialsSignup } from "@/app/lib/action/auth";
 import { useRegistrationStatusQuery } from "@/redux/services/auth/graphqlAuthApi";
 import { error } from "console";
+import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import React, { useEffect, useState } from "react";
+import toast from "react-hot-toast";
 
 interface RegistrationFormData {
   email: string;
@@ -107,6 +109,18 @@ const SignupPage = () => {
     }
   }, [registrationStatusData, isStatusLoading, router]);
 
+  const handleGoogleLogin = async () => {
+    try {
+      const result = await signIn("google", { callbackUrl: "/dashboard" });
+      if (result?.error) {
+        toast.error("Google login failed");
+      }
+    } catch (err) {
+      console.error("Google login error:", err);
+      toast.error("An unexpected error occurred during Google login");
+    }
+  };
+
   return (
     <div
       style={{ backgroundColor: "#01010C" }}
@@ -144,7 +158,10 @@ const SignupPage = () => {
 
           <div className="space-y-6">
             {/* Google Sign In */}
-            <button className="w-full flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg py-3 px-4 transition-colors">
+            <button
+              className="w-full flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg py-3 px-4 transition-colors"
+              onClick={handleGoogleLogin}
+            >
               <img
                 src="/api/placeholder/20/20"
                 alt="Google"

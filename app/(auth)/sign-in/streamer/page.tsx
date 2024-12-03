@@ -3,6 +3,7 @@ import {
   credentialsLogin,
   credentialsLoginStreamer,
 } from "@/app/lib/action/auth";
+import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import React, { useState, useRef } from "react";
 import toast from "react-hot-toast";
@@ -16,17 +17,29 @@ const StreamerLogin = () => {
   const [errors, setErrors] = useState<{ email?: string; password?: string }>(
     {}
   );
+
+  const handleGoogleLogin = async () => {
+    try {
+      const result = await signIn("google", { callbackUrl: "/dashboard" }); // Redirect to the home page after login
+      if (result?.error) {
+        toast.error("Google login failed");
+      }
+    } catch (err) {
+      console.error("Google login error:", err);
+      toast.error("An unexpected error occurred during Google login");
+    }
+  };
+
   const handleCredentialsLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       const result = await credentialsLoginStreamer({ email, password });
-        console.log(result,"result")
+      console.log(result, "result");
       if (result.success) {
         toast.success("Login Successful!");
         router.push("/streamer-dashboard");
       } else {
         if (result.errors) {
-            
           console.log(result.errors, "errors");
           setErrors(result.errors);
         }
@@ -68,7 +81,10 @@ const StreamerLogin = () => {
 
           {/* Social Login Buttons */}
           <div className="space-y-3">
-            <button className="w-full flex items-center justify-center gap-2 border border-gray-300 rounded-lg py-3 px-4 hover:bg-gray-50 transition-colors">
+            <button
+              className="w-full flex items-center justify-center gap-2 border border-gray-300 rounded-lg py-3 px-4 hover:bg-gray-50 transition-colors"
+              onClick={handleGoogleLogin}
+            >
               <img
                 src="/api/placeholder/20/20"
                 alt="Google"
