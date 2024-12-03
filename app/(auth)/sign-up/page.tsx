@@ -96,12 +96,12 @@ const SignupPage = () => {
       console.log(status, "status page load");
       switch (status) {
         case "pending_verification":
-          router.push(
+          router.replace(
             `/otp-verification?email=${encodeURIComponent(formData.email)}`
           );
           break;
         case "verified":
-          router.push("/dashboard");
+          router.replace("/dashboard");
           break;
         case "expired":
           setErrors({ general: "Registration expired. Please start again." });

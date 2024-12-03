@@ -128,9 +128,18 @@ export interface RegistrationInitiateResponse {
   ];
 }
 
+export interface ErrorResponse {
+  message: string;
+  locations?: Array<Location>;
+  path?: Array<string>;
+}
+
 export interface VerifyRegistrationResponse {
-  user: User;
-  token: TokenPair;
+  data: {
+    user?: User;
+    token?: TokenPair;
+  } | null;
+  errors?: Array<ErrorResponse>;
 }
 
 export interface LoginResponse {

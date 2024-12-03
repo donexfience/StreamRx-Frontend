@@ -105,7 +105,10 @@ export const graphqlAuthApi = createApi({
       }),
     }),
 
-    registrationStatus: builder.query<RegistrationStatusResponse, { email: string }>({
+    registrationStatus: builder.query<
+      RegistrationStatusResponse,
+      { email: string }
+    >({
       query: ({ email }) => ({
         url: "/graphql",
         method: "POST",
@@ -126,7 +129,6 @@ export const graphqlAuthApi = createApi({
         },
       }),
     }),
-
 
     login: builder.mutation<LoginResponse, LoginInput>({
       query: (input) => ({
@@ -241,6 +243,33 @@ export const graphqlAuthApi = createApi({
         },
       }),
     }),
+    resendOtp: builder.mutation<
+      { message: string; status: RegistrationStatusResponse },
+      { email: string }
+    >({
+      query: ({ email }) => ({
+        url: "/graphql",
+        method: "POST",
+        body: {
+          query: `
+          mutation ResendOtp($email: String!) {
+            resendOtp(email: $email) {
+              message
+              status {
+                status
+                message
+                email
+                createdAt
+                attemptsRemaining
+                expiresIn
+              }
+            }
+          }
+        `,
+          variables: { email },
+        },
+      }),
+    }),
   }),
 });
 
@@ -253,5 +282,6 @@ export const {
   useLogoutMutation,
   useStreamerLoginMutation,
   useGoogleLoginMutation,
-  useRegistrationStatusQuery
+  useRegistrationStatusQuery,
+  useResendOtpMutation
 } = graphqlAuthApi;
