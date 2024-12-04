@@ -20,7 +20,7 @@ const Navbar = () => {
   return (
     <>
       {/* Main Navbar */}
-      <nav className="fixed top-0 left-0 w-full z-100 flex items-center justify-between p-4 backdrop-blur-sm bg-transparent mb-24">
+      <nav className="z-50 fixed top-0 left-0 w-full z-100 flex items-center justify-between p-4 backdrop-blur-sm bg-transparent mb-24">
         {/* Left section */}
         <div className="flex items-center lg:ml-64 lg:gap-11 lg:pl-36">
           <div className="text-white text-2xl font-bold">StreamRx</div>
@@ -41,7 +41,7 @@ const Navbar = () => {
 
         {/* Right section */}
         <div className="hidden lg:flex items-center space-x-4 pr-72 mr-36 pt-3">
-          <Link className="text-white hover:text-blue-500" href='/login' >
+          <Link className="text-white hover:text-blue-500" href='/sign-in/viewer' >
             Sign In
           </Link>
           <div className="flex items-center px-3 py-2 border-2 border-gray-300 text-white rounded-2xl hover:bg-blue-500 hover:text-white transition cursor-pointer">

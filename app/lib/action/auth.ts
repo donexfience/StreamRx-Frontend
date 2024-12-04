@@ -189,6 +189,15 @@ export async function credentialsSignup(formData: {
     console.log(registrationData, "registreation data");
 
     if (registrationData?.status?.message === "OTP verification pending") {
+      const cookieStore = await cookies();
+
+      //cookie for preventing direct access in the register realated pages
+      cookieStore.set("registration_initiated", "true", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: 15 * 60,
+      });
       console.log("hello in the if of singup action");
       return {
         success: true,
@@ -243,6 +252,11 @@ export async function setAuthCookies(
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "strict",
-    maxAge: 60 * 60 * 24 * 7, 
+    maxAge: 60 * 60 * 24 * 7,
   });
+}
+
+export async function clearAuthCookie(cookieName: string) {
+  const cookiesStore = await cookies();
+  cookiesStore.delete(cookieName);
 }

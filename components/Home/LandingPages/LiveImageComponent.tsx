@@ -29,7 +29,7 @@ const LiveImageComponent: React.FC = () => {
         {/* Video Container */}
         <div className="relative h-full">
           <div className="relative w-full h-full flex items-center justify-center md:justify-end">
-            <div className="relative w-full md:w-[42.5%] h-[50vh] md:h-[76%] mt-2 overflow-hidden">
+            <div className="relative w-full md:w-[42.5%] h-[50vh] md:h-[76%] mt-2 overflow-hidden z-40">
               <img
                 src="/assets/LiveImageComponent/LiveBox.png"
                 className="absolute inset-0 z-40 w-full h-full object-contain opacity-34 lg:w-[86%] lg:pb-10 lg:h-[94%] sm:mr-3 sm:pb-6 sm:w-[72%]"

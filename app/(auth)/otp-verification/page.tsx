@@ -9,7 +9,7 @@ import {
 } from "@/redux/services/auth/graphqlAuthApi";
 import toast from "react-hot-toast";
 import CypherIcon from "/assets/otp/cyber.svg";
-import { setAuthCookies } from "@/app/lib/action/auth";
+import { clearAuthCookie, setAuthCookies } from "@/app/lib/action/auth";
 const MAX_RESEND_ATTEMPTS = 3;
 
 const OtpPage = () => {
@@ -37,77 +37,90 @@ const OtpPage = () => {
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
+  // Initialize state from localStorage on mount
   useEffect(() => {
-    const savedTimer = localStorage.getItem("resendTimer");
-    const savedAttempts = localStorage.getItem("resendAttempts");
+    const userKey = `user_${email}`;
+    const storedUserData = JSON.parse(localStorage.getItem(userKey) || "{}");
 
-    if (savedTimer) {
-      const remainingTime = parseInt(savedTimer, 10);
-      setResendTimer(remainingTime > 0 ? remainingTime : 0);
-      setCanResend(remainingTime <= 0);
+    if (storedUserData?.lastResetTimestamp) {
+      const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000;
+      if (storedUserData.lastResetTimestamp < twentyFourHoursAgo) {
+        const resetData = {
+          resendAttempts: 0,
+          resendTimer: 180,
+          lastResetTimestamp: Date.now(),
+        };
+        localStorage.setItem(userKey, JSON.stringify(resetData));
+        setResendAttempts(0);
+        setResendTimer(180);
+        setCanResend(true);
+      } else {
+        setResendAttempts(storedUserData.resendAttempts || 0);
+        const savedTimer = storedUserData.resendTimer || 180;
+        setResendTimer(savedTimer);
+        setCanResend(savedTimer <= 0);
+      }
+    } else {
+      const initialData = {
+        resendAttempts: 0,
+        resendTimer: 180,
+        lastResetTimestamp: Date.now(),
+      };
+      localStorage.setItem(userKey, JSON.stringify(initialData));
+    }
+  }, [email]);
+
+  // Timer logic: run only one interval at a time
+  useEffect(() => {
+    // Clear any existing intervals
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
     }
 
-    if (savedAttempts) {
-      setResendAttempts(parseInt(savedAttempts, 10));
+    if (resendTimer > 0 && !canResend) {
+      timerIntervalRef.current = setInterval(() => {
+        setResendTimer((prevTimer) => {
+          if (prevTimer <= 1) {
+            clearInterval(timerIntervalRef.current!);
+            setCanResend(true);
+            updateLocalStorage(0);
+            return 0;
+          }
+          const newTimer = prevTimer - 1;
+          updateLocalStorage(newTimer);
+          return newTimer;
+        });
+      }, 1000);
     }
 
-    timerIntervalRef.current = setInterval(() => {
-      setResendTimer((prevTimer) => {
-        if (prevTimer <= 1) {
-          clearInterval(timerIntervalRef.current!);
-          localStorage.setItem("resendTimer", "0");
-          setCanResend(true);
-          return 0;
-        }
-        localStorage.setItem("resendTimer", (prevTimer - 1).toString());
-        return prevTimer - 1;
-      });
-    }, 1000);
+    // Check if the maximum verification attempts have been reached
+    if (
+      registrationStatus?.data.registrationStatus.attemptsRemaining !==
+        undefined &&
+      registrationStatus?.data?.registrationStatus.status ===
+        "Maximum verification attempts reached"
+    ) {
+      setCanResend(false);
+    }
 
     return () => {
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current);
       }
     };
-  }, []);
+  }, [resendTimer, canResend, registrationStatus]); // Add registrationStatus as a dependency
 
-  useEffect(() => {
-    let expirationCheckTimeout: NodeJS.Timeout | null = null;
+  // console.log(registrationStatus, "registeration", canResend);
 
-    const handleExpiration = () => {
-      toast.error(
-        "Session expired. Please start the registration process again."
-      );
-      router.replace("/");
+  const updateLocalStorage = (newTimer: number) => {
+    const userKey = `user_${email}`;
+    const storedUserData = JSON.parse(localStorage.getItem(userKey) || "{}");
+    const updatedUserData = {
+      ...storedUserData,
+      resendTimer: newTimer,
     };
-
-    if (registrationStatus?.data) {
-      const expiresIn = registrationStatus.data.registrationStatus?.expiresIn;
-
-      if (expiresIn != null) {
-        if (expiresIn <= 0) {
-          handleExpiration();
-        } else {
-          expirationCheckTimeout = setTimeout(() => {
-            handleExpiration();
-          }, expiresIn * 1000);
-        }
-      } else {
-        refetch();
-      }
-    } else if (registrationStatus === undefined) {
-      expirationCheckTimeout = setTimeout(() => {
-        refetch();
-      }, 1000);
-    } else {
-      handleExpiration();
-    }
-    return () => {
-      if (expirationCheckTimeout) {
-        clearTimeout(expirationCheckTimeout);
-      }
-    };
-  }, [registrationStatus, refetch, router]);
+    localStorage.setItem(userKey, JSON.stringify(updatedUserData));
+  };
 
   const handleChange = (index: number, value: string) => {
     const numericValue = value.replace(/[^0-9]/g, "");
@@ -133,9 +146,10 @@ const OtpPage = () => {
       }).unwrap();
 
       if (result?.data) {
-        console.log(result?.data, "result");
-        const { accessToken, refreshToken } = result.data.verifyRegistration?.token!;
+        const { accessToken, refreshToken } =
+          result.data.verifyRegistration?.token!;
         await setAuthCookies(accessToken, refreshToken);
+        await clearAuthCookie('registration_initiated');
         toast.success("OTP verified successfully!");
         router.replace("/dashboard");
       }
@@ -146,88 +160,23 @@ const OtpPage = () => {
         });
       }
     } catch (error) {
-      console.log(error, "error");
       toast.error("An unexpected error occurred. Please try again.");
     }
   };
-
-  useEffect(() => {
-    const userKey = `user_${email}`;
-    const storedUserData = JSON.parse(localStorage.getItem(userKey) || "{}");
-    if (storedUserData.lastResetTimestamp) {
-      const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000;
-      if (storedUserData.lastResetTimestamp < twentyFourHoursAgo) {
-        const resetData = {
-          resendAttempts: 0,
-          resendTimer: 0,
-          lastResetTimestamp: Date.now(),
-        };
-        localStorage.setItem(userKey, JSON.stringify(resetData));
-        setResendAttempts(0);
-        setCanResend(true);
-      } else {
-        setResendAttempts(storedUserData.resendAttempts || 0);
-        const savedTimer = storedUserData.resendTimer || 180;
-        setResendTimer(savedTimer);
-        setCanResend(savedTimer <= 0);
-      }
-    } else {
-      const initialData = {
-        resendAttempts: 0,
-        resendTimer: 180,
-        lastResetTimestamp: Date.now(),
-      };
-      localStorage.setItem(userKey, JSON.stringify(initialData));
-    }
-
-    timerIntervalRef.current = setInterval(() => {
-      setResendTimer((prevTimer) => {
-        const userKey = `user_${email}`;
-        const storedUserData = JSON.parse(
-          localStorage.getItem(userKey) || "{}"
-        );
-
-        if (prevTimer <= 1) {
-          clearInterval(timerIntervalRef.current!);
-          const updatedUserData = {
-            ...storedUserData,
-            resendTimer: 0,
-          };
-          localStorage.setItem(userKey, JSON.stringify(updatedUserData));
-
-          setCanResend(true);
-          return 0;
-        }
-        const newTimer = prevTimer - 1;
-        const updatedUserData = {
-          ...storedUserData,
-          resendTimer: newTimer,
-        };
-        localStorage.setItem(userKey, JSON.stringify(updatedUserData));
-
-        return newTimer;
-      });
-    }, 1000);
-    return () => {
-      if (timerIntervalRef.current) {
-        clearInterval(timerIntervalRef.current);
-      }
-    };
-  }, [email]);
 
   const handleResend = async () => {
     const userKey = `user_${email}`;
     const storedUserData = JSON.parse(localStorage.getItem(userKey) || "{}");
     const userResendAttempts = storedUserData.resendAttempts || 0;
+
     if (userResendAttempts >= MAX_RESEND_ATTEMPTS) {
       toast.error("Maximum resend attempts reached. Please try later.");
       return;
     }
-    if (timerIntervalRef.current) {
-      clearInterval(timerIntervalRef.current);
-    }
+
     setResendTimer(180);
     setCanResend(false);
+
     const newAttempts = userResendAttempts + 1;
     const updatedUserData = {
       resendAttempts: newAttempts,
@@ -236,9 +185,17 @@ const OtpPage = () => {
     };
     localStorage.setItem(userKey, JSON.stringify(updatedUserData));
     setResendAttempts(newAttempts);
-
+    if (
+      registrationStatus?.data.registrationStatus.attemptsRemaining !=
+        undefined &&
+      registrationStatus?.data?.registrationStatus.status ==
+        "Maximum verification attempts reached"
+    ) {
+      setCanResend(false);
+    }
     try {
       const result = await resendOtp({ email }).unwrap();
+      console.log("resend otp result",result)
       toast.success(result.message || "A new OTP has been sent to your email.");
     } catch (error: any) {
       toast.error(
