@@ -152,8 +152,12 @@ export interface LoginResponse {
 }
 
 export interface ForgotPasswordResponse {
-  success: boolean;
-  message: string;
+  data: {
+    forgotPassword: {
+      success: boolean;
+      message: string;
+    };
+  };
 }
 
 export interface ChangePasswordResponse {

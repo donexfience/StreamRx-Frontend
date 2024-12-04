@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import React, { useState } from "react";
 import toast from "react-hot-toast";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 
 const Login = () => {
   const router = useRouter();
@@ -26,7 +27,7 @@ const Login = () => {
 
       if (result.success) {
         toast.success("Login Successful!");
-        router.push("/dashboard");
+        router.replace("/dashboard");
       } else {
         if (result.errors) {
           setErrors(result.errors);
@@ -186,14 +187,23 @@ const Login = () => {
                   <br />
                   You agree to receive our emails.
                 </p>
-                <div className="mt-4">
-                  Already have an account?{" "}
-                  <a href="#" className="text-white hover:text-blue-500">
-                    Signup
-                  </a>
-                  <a href="#" className="text-white hover:text-blue-500 ml-4">
-                    See Our Plans
-                  </a>
+                <div className="mt-4 flex justify-between">
+                  <p>
+                    Dont have an account?{" "}
+                    <Link
+                      className="underline text-white hover:text-blue-500"
+                      href="/sign-up"
+                    >
+                      signup
+                    </Link>
+                  </p>
+
+                  <Link
+                    className="underline text-white hover:text-blue-500 ml-4 href='/forget-password"
+                    href="/forget-password"
+                  >
+                    forgot password
+                  </Link>
                 </div>
               </div>
             </div>

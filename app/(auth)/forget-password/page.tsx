@@ -7,7 +7,6 @@ import { useDispatch } from "react-redux";
 import { useForgotPasswordMutation } from "@/redux/services/auth/graphqlAuthApi";
 import toast from "react-hot-toast";
 
-
 const ForgetPasswordPage = () => {
   const [email, setEmail] = useState("");
   const [forgotPassword, { isLoading }] = useForgotPasswordMutation();
@@ -20,17 +19,17 @@ const ForgetPasswordPage = () => {
 
     try {
       const response = await forgotPassword({ email }).unwrap();
-      console.log(response)
-    //   if (response?.forgotPassword?.success) {
-    //     toast.success(
-    //       response.forgotPassword.message || "OTP sent successfully!"
-    //     );
-    //   } else {
-    //     toast.error(
-    //       response.forgotPassword.message ||
-    //         "Failed to send OTP. Please try again."
-    //     );
-    //   }
+      console.log(response?.data);
+      if (response?.data?.forgotPassword?.success) {
+        toast.success(
+          response.data?.forgotPassword.message || "OTP sent successfully!"
+        );
+      } else {
+        toast.error(
+          response.data?.forgotPassword.message ||
+            "Failed to send OTP. Please try again."
+        );
+      }
     } catch (error) {
       console.error("Error:", error);
       toast.error("An unexpected error occurred. Please try again later.");

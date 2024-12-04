@@ -5,11 +5,12 @@ import { AiOutlineClose } from "react-icons/ai";
 import { MdSecurityUpdate } from "react-icons/md";
 import { useChangePasswordMutation } from "@/redux/services/auth/graphqlAuthApi";
 import toast from "react-hot-toast";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 const ForgetPasswordPage = () => {
+  const router = useRouter();
   const searchParams = useSearchParams();
-  const encodedToken = searchParams.get("email");
+  const encodedToken = searchParams.get("token");
   const token = encodedToken ? decodeURIComponent(encodedToken) : "";
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -27,6 +28,7 @@ const ForgetPasswordPage = () => {
     }
 
     try {
+      console.log(token, "token in the frontend");
       const response = await changePassword({
         newPassword: password,
         token: token,
@@ -35,9 +37,10 @@ const ForgetPasswordPage = () => {
 
       if (response?.data?.changePassword?.success) {
         toast.success(
-          response.data?.data?.changePassword?.message ||
+          response.data?.changePassword?.message ||
             "Password changed successfully!"
         );
+        router.replace("/");
       } else {
         toast.error(
           response.data?.changePassword.message ||
