@@ -1,11 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
+import { jwtVerify } from "jose";
 
-export function middleware(req: NextRequest) {
-  const refreshToken = req.cookies.get("refreshToken");
-  const registrationInitiated = req.cookies.get("registration_initiated");
+export async function middleware(req: NextRequest) {
+  const refreshTokenCookie = req.cookies.get("refreshToken");
+  const registrationInitiatedCookie = req.cookies.get("registration_initiated");
+
+  const refreshToken = refreshTokenCookie?.value;
+  const registrationInitiated = registrationInitiatedCookie?.value;
 
   console.log(refreshToken, "refreshToken in the middleware");
-  console.log(registrationInitiated, "registration_initiated in the middleware");
+  console.log(
+    registrationInitiated,
+    "registration_initiated in the middleware"
+  );
+
+  let userRole = null;
+
+  if (refreshToken) {
+    try {
+      const secret = new TextEncoder().encode(process.env.JWT_SECRET);
+      const { payload } = await jwtVerify(refreshToken, secret);
+      console.log(payload);
+      userRole = payload.role;
+      console.log(userRole, "User role in middleware");
+    } catch (err: any) {
+      console.error("Invalid or expired token:", err.message);
+      return NextResponse.redirect(new URL("/sign-in/viewer", req.url));
+    }
+  }
 
   if (!refreshToken) {
     const protectedPaths = ["/dashboard", "/profile"];
@@ -28,9 +50,40 @@ export function middleware(req: NextRequest) {
       return NextResponse.redirect(new URL("/sign-in/viewer", req.url));
     }
   }
+
   const authPaths = ["/sign-up", "/sign-in/viewer", "/sign-in/streamer"];
-  if (refreshToken && authPaths.some((path) => req.nextUrl.pathname.startsWith(path))) {
-    return NextResponse.redirect(new URL("/dashboard", req.url));
+  if (
+    refreshToken &&
+    authPaths.some((path) => req.nextUrl.pathname.startsWith(path))
+  ) {
+    // Role-based dashboard redirection
+    if (userRole === "streamer") {
+      return NextResponse.redirect(new URL("/dashboard/streamer", req.url));
+    } else if (userRole === "viewer") {
+      return NextResponse.redirect(new URL("/dashboard", req.url));
+    } else if (userRole === "admin") {
+      return NextResponse.redirect(new URL("/dashboard/admin", req.url));
+    }
+  }
+
+  // Role-based redirection for dashboards
+  if (refreshToken && req.nextUrl.pathname.startsWith("/dashboard")) {
+    if (
+      userRole === "streamer" &&
+      !req.nextUrl.pathname.startsWith("/dashboard/streamer")
+    ) {
+      return NextResponse.redirect(new URL("/dashboard/streamer", req.url));
+    } else if (
+      userRole === "viewer" &&
+      !req.nextUrl.pathname.startsWith("/dashboard")
+    ) {
+      return NextResponse.redirect(new URL("/dashboard", req.url));
+    } else if (
+      userRole === "admin" &&
+      !req.nextUrl.pathname.startsWith("/dashboard/admin")
+    ) {
+      return NextResponse.redirect(new URL("/dashboard/admin", req.url));
+    }
   }
 
   return NextResponse.next();
