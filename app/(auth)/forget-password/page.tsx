@@ -7,7 +7,7 @@ import { useDispatch } from "react-redux";
 import { useForgotPasswordMutation } from "@/redux/services/auth/graphqlAuthApi";
 import toast from "react-hot-toast";
 
-const ForgetPasswordPage = () => {
+const ForgetPasswordPage: React.FC = () => {
   const [email, setEmail] = useState("");
   const [forgotPassword, { isLoading }] = useForgotPasswordMutation();
 
@@ -37,7 +37,7 @@ const ForgetPasswordPage = () => {
   };
 
   return (
-    <div className="w-full flex justify-center items-center min-h-screen bg-[url('/assets/otp/bg.png')] bg-cover relative">
+    <div className="w-full flex justify-center items-center min-h-screen bg-[url('/assets/forgetPassword/otp.png')] bg-cover relative">
       <div className="w-full max-w-4xl px-6 flex justify-center">
         <div
           style={{

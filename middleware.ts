@@ -36,19 +36,15 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  const registrationProtectedPaths = [
-    "/otp-verification",
-    "/forgot-password",
-    "/change-password",
-  ];
-  if (!registrationInitiated) {
-    if (
-      registrationProtectedPaths.some((path) =>
-        req.nextUrl.pathname.startsWith(path)
-      )
-    ) {
-      return NextResponse.redirect(new URL("/sign-in/viewer", req.url));
-    }
+  // Protect registration-related paths
+  const registrationProtectedPaths = ["/otp-verification", "/change-password"];
+  if (
+    !registrationInitiated &&
+    registrationProtectedPaths.some((path) =>
+      req.nextUrl.pathname.startsWith(path)
+    )
+  ) {
+    return NextResponse.redirect(new URL("/sign-in/viewer", req.url));
   }
 
   const authPaths = ["/sign-up", "/sign-in/viewer", "/sign-in/streamer"];

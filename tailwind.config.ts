@@ -16,6 +16,9 @@ export default {
         "brand-mobile": "2rem",
         "brand-desktop": "4rem",
       },
+      fontFamily: {
+        knewave: ["Knewave", "sans-serif"],
+      },
     },
   },
   plugins: [],
