@@ -1,12 +1,12 @@
 import React from "react";
 import ViewerNavbar from "./navbar/VIewerNavbar";
-import Streamvideo from "./Streamvide";
-import Usage from "./Usage";
-import YourunfairAdvantage from "./YourunfairAdvantage";
-import TakeControl from "./TakeControl";
-import UseCase from "./UseCase";
-import Reviews from "./Reviews";
-import GettingStartedTody from "./GettingStartedTody";
+import Streamvideo from "./viewerComponent/Streamvide";
+import Usage from "./viewerComponent/Usage";
+import YourunfairAdvantage from "./viewerComponent/YourunfairAdvantage";
+import TakeControl from "./viewerComponent/TakeControl";
+import UseCase from "./viewerComponent/UseCase";
+import Reviews from "./viewerComponent/Reviews";
+import GettingStartedTody from "./viewerComponent/GettingStartedTody";
 import Footer from "../Home/LandingPages/Footer";
 
 const ViewerDashboard: React.FC = () => {

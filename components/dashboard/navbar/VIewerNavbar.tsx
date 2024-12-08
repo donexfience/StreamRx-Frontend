@@ -20,7 +20,7 @@ const Navbar = () => {
   return (
     <>
       {/* Main Navbar */}
-      <nav className="z-50 fixed top-0 left-0 w-full z-100 flex items-center justify-between p-4 backdrop-blur-sm bg-transparent mb-24">
+      <nav className="z-50 fixed top-0 left-0 w-full z-100 flex items-center justify-between p-2 backdrop-blur-sm bg-transparent mb-24">
         {/* Left section */}
         <div className="flex items-center lg:ml-64 lg:gap-11 lg:pl-36">
           <div className="text-white text-2xl font-bold">StreamRx</div>
