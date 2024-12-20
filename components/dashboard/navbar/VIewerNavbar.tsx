@@ -36,7 +36,7 @@ const Navbar = () => {
           >
             Sign up
           </Link>
-          <div
+          <Link href='/dashboard/viewer/main'
             className="flex items-center px-3 py-2 border-2 border-gray-300 text-white rounded-2xl 
                 backdrop-blur-lg bg-white/20 hover:bg-blue-500 hover:text-white transition cursor-pointer"
           >
@@ -55,7 +55,7 @@ const Navbar = () => {
                 strokeLinejoin="round"
               />
             </svg>
-          </div>
+          </Link>
         </div>
 
         {/* Mobile Menu Button */}

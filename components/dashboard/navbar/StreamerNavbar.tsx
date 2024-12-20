@@ -36,10 +36,11 @@ const StreamerNavbar = () => {
             >
               Sign up
             </Link>
-            <div
+            <Link href='/dashboard/streamer/main'
               className="flex items-center px-3 py-2 border-2 border-black text-black rounded-2xl 
                 backdrop-blur-lg bg-white/20 hover:bg-blue-500 hover:text-white transition cursor-pointer"
             >
+
               Get Started
               <svg
                 viewBox="0 0 24 24"
@@ -55,7 +56,7 @@ const StreamerNavbar = () => {
                   strokeLinejoin="round"
                 />
               </svg>
-            </div>
+            </Link>
           </div>
 
           {/* Mobile Menu Button */}

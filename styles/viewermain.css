@@ -1,0 +1,42 @@
+.carousel-container {
+    position: relative;
+    padding-bottom: 40px;
+  }
+  
+  .custom-dot-list-style {
+    position: absolute;
+    bottom: 0;
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    padding: 0;
+    margin: 0;
+    list-style: none;
+  }
+  
+  .carousel-item {
+    padding: 0 4px;
+  }
+  
+
+  .react-multiple-carousel__arrow {
+    background: rgba(0, 0, 0, 0.5) !important;
+  }
+  
+  .react-multiple-carousel__arrow:hover {
+    background: rgba(0, 0, 0, 0.8) !important;
+  }
+  
+  @media (max-width: 768px) {
+    .carousel-container {
+      padding-bottom: 20px;
+    }
+    
+    .flex-[3] {
+      flex: 1;
+    }
+    
+    .flex-1 {
+      display: none;
+    }
+  }

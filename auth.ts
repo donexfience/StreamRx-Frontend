@@ -6,6 +6,7 @@ import Google from "next-auth/providers/google";
 import GoogleProvider from "next-auth/providers/google";
 import Instagram from "next-auth/providers/instagram";
 import Twitch from "next-auth/providers/twitch";
+import { setAuthCookies } from "./app/lib/action/auth";
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
     GoogleProvider({
@@ -73,7 +74,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             )
             .unwrap();
           console.log(response, "response");
-
+          console.log(response.data.googleLogin.token,"token got for google login")
+          if (response.data?.googleLogin?.token) {
+            setAuthCookies(
+              response.data.googleLogin.token?.accessToken,
+              response.data.googleLogin.token?.refreshToken
+            );
+          }
           return response?.data?.googleLogin.success || false;
         } catch (error) {
           console.error("Google login failed:", error);
@@ -85,7 +92,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
     async session({ session, token }) {
       if (token) {
-        console.log(token,"token in seesion")
+        console.log(token, "token in seesion");
         session.user.id = token.id as string;
         session.user.name = token.name;
       }
@@ -96,7 +103,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         console.log(profile, "profile");
         token.id = profile?.sub;
         token.name = profile?.name;
-        token.picture = profile?.picture
+        token.picture = profile?.picture;
       }
       return token;
     },

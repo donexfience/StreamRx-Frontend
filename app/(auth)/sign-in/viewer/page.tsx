@@ -43,7 +43,7 @@ const Login = () => {
   };
   const handleGoogleLogin = async () => {
     try {
-      const result = await signIn("google", { callbackUrl: "/dashboard" }); // Redirect to the home page after login
+      const result = await signIn("google", { callbackUrl: "/dashboard/viewer" }); // Redirect to the home page after login
       if (result?.error) {
         toast.error("Google login failed");
       }

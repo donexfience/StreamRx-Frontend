@@ -4,3 +4,4 @@ import { RootState } from "../../store";
 export const baseQuery = fetchBaseQuery({
   baseUrl: process.env.NEXT_PUBLIC_API_URL,
 });
+  
