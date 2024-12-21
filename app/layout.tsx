@@ -6,6 +6,7 @@ import { Provider } from "react-redux";
 import { store } from "@/redux/store";
 import { SessionProvider } from "next-auth/react";
 import { Toaster } from "react-hot-toast";
+import { PersistGate } from "redux-persist/integration/react";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",

@@ -10,6 +10,8 @@ import {
 import toast from "react-hot-toast";
 import CypherIcon from "/assets/otp/cyber.svg";
 import { clearAuthCookie, setAuthCookies } from "@/app/lib/action/auth";
+import { useDispatch } from "react-redux";
+import { setCredentials } from "@/redux/services/auth/authSlice";
 const MAX_RESEND_ATTEMPTS = 3;
 
 const OtpPage = () => {
@@ -17,6 +19,7 @@ const OtpPage = () => {
   const searchParams = useSearchParams();
   const encodedEmail = searchParams.get("email");
   const email = encodedEmail ? decodeURIComponent(encodedEmail) : "";
+  const dispatch = useDispatch();
 
   const [
     verifyRegistration,
@@ -149,7 +152,12 @@ const OtpPage = () => {
         const { accessToken, refreshToken } =
           result.data.verifyRegistration?.token!;
         await setAuthCookies(accessToken, refreshToken);
-        await clearAuthCookie('registration_initiated');
+        await clearAuthCookie("registration_initiated");
+        if (result.data.verifyRegistration?.user != null) {
+          dispatch(
+            setCredentials({ user: result.data.verifyRegistration?.user })
+          );
+        }
         toast.success("OTP verified successfully!");
         router.replace("/dashboard");
       }
@@ -195,7 +203,7 @@ const OtpPage = () => {
     }
     try {
       const result = await resendOtp({ email }).unwrap();
-      console.log("resend otp result",result)
+      console.log("resend otp result", result);
       toast.success(result.message || "A new OTP has been sent to your email.");
     } catch (error: any) {
       toast.error(

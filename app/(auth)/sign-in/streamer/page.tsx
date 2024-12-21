@@ -21,7 +21,7 @@ const StreamerLogin = () => {
   const handleGoogleLogin = async () => {
     try {
       const result = await signIn("google", { callbackUrl: "/dashboard/streamer" }); // Redirect to the home page after login
-      
+
       if (result?.error) {
         toast.error("Google login failed");
       }
@@ -38,6 +38,7 @@ const StreamerLogin = () => {
       console.log(result, "result");
       if (result.success) {
         toast.success("Login Successful!");
+        localStorage.setItem('user', JSON.stringify(result.user));
         router.push("/streamer-dashboard");
       } else {
         if (result.errors) {

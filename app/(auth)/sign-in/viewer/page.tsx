@@ -9,8 +9,11 @@ import React, { useState } from "react";
 import toast from "react-hot-toast";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { useDispatch } from "react-redux";
+import { setCredentials } from "@/redux/services/auth/authSlice";
 
 const Login = () => {
+  const dispatch = useDispatch();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -26,8 +29,14 @@ const Login = () => {
       const result = await credentialsLogin({ email, password });
 
       if (result.success) {
+        if (result.user != undefined) {
+          dispatch(setCredentials({ user: result?.user }));
+          localStorage.setItem('user', JSON.stringify(result.user));
+        }
         toast.success("Login Successful!");
+
         router.replace("/dashboard");
+
       } else {
         if (result.errors) {
           setErrors(result.errors);
@@ -43,7 +52,9 @@ const Login = () => {
   };
   const handleGoogleLogin = async () => {
     try {
-      const result = await signIn("google", { callbackUrl: "/dashboard/viewer" }); // Redirect to the home page after login
+      const result = await signIn("google", {
+        callbackUrl: "/dashboard/viewer",
+      }); // Redirect to the home page after login
       if (result?.error) {
         toast.error("Google login failed");
       }

@@ -1,4 +1,4 @@
-'use client'
+"use client";
 import React, { useState } from "react";
 import { StreamCard } from "./StreamerCard";
 
@@ -41,7 +41,7 @@ export const MainContent: React.FC = () => {
       title: "Forza Horizon",
       streamer: "RacingGamer",
       thumbnail: "/assets/viewermain/streamer1.png",
-    }
+    },
   ];
 
   const sideStreams = [
@@ -64,7 +64,7 @@ export const MainContent: React.FC = () => {
       title: "Forza Horizon",
       streamer: "RacingGamer",
       thumbnail: "/assets/viewermain/streamer1.png",
-    }
+    },
   ];
 
   const handleNext = () => {
@@ -73,15 +73,22 @@ export const MainContent: React.FC = () => {
 
   const handlePrev = () => {
     setCurrentIndex(
-      (prevIndex) => (prevIndex - 1 + trendingStreams.length) % trendingStreams.length
+      (prevIndex) =>
+        (prevIndex - 1 + trendingStreams.length) % trendingStreams.length
     );
   };
 
   const featuredStream = trendingStreams[currentIndex];
-  const sideStreamsToDisplay = sideStreams.slice(currentIndex, currentIndex + 2);
+  const sideStreamsToDisplay = sideStreams.slice(
+    currentIndex,
+    currentIndex + 2
+  );
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
+  const toggleTheme = () => setIsDarkMode((prev) => !prev);
 
   return (
-    <div className="flex-1 p-3 bg-gray-950">
+    <div className="flex-1 p-3 bg-gray-950 dark:bg-white transition-all duration-500 ease-in-out">
       {/* Top Section with Featured Stream and Side Streams */}
       <div className="flex gap-5 main-curousel">
         {/* Featured Stream */}
@@ -125,7 +132,9 @@ export const MainContent: React.FC = () => {
         {[...Array(trendingStreams.length)].map((_, i) => (
           <div
             key={i}
-            className={`w-2 h-2 rounded-full ${i === currentIndex ? 'bg-white' : 'bg-gray-600'}`}
+            className={`w-2 h-2 rounded-full ${
+              i === currentIndex ? "bg-white" : "bg-gray-600"
+            }`}
           />
         ))}
 

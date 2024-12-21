@@ -260,3 +260,23 @@ export async function clearAuthCookie(cookieName: string) {
   const cookiesStore = await cookies();
   cookiesStore.delete(cookieName);
 }
+
+export async function getAuthCookies() {
+  try {
+    const cookieStore = await cookies();
+    const accessToken = cookieStore.get("accessToken")?.value;
+    const refreshToken = cookieStore.get("refreshToken")?.value;
+
+    return {
+      accessToken: accessToken || null,
+      refreshToken: refreshToken || null,
+    };
+  } catch (error) {
+    console.error("Error retrieving cookies:", error);
+    return {
+      accessToken: null,
+      refreshToken: null,
+      message: "Failed to retrieve cookies",
+    };
+  }
+}

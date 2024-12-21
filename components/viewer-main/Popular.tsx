@@ -66,7 +66,7 @@ const Popular: React.FC = () => {
   ];
 
   return (
-    <div className="bg-black p-6 min-h-screen">
+    <div className="bg-black dark:bg-white transition-all duration-500 ease-in-out p-6 min-h-screen">
       {/* Popular Categories */}
       <div className="mb-8">
         <div className="flex justify-between items-center mb-4">
