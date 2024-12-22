@@ -3,9 +3,10 @@
 import { RootState } from "@/redux/store";
 import { Search } from "lucide-react";
 import React, { useEffect, useState } from "react";
-import { FaMoon, FaSun } from "react-icons/fa";
+import { FaMoon, FaSun, FaUser } from "react-icons/fa";
 import { useSelector } from "react-redux";
 import { Modal } from "../modals/ProfileModall";
+import { getUserFromCookies } from "@/app/lib/action/auth";
 
 const ViewerHead: React.FC<{}> = ({}) => {
   const { user } = useSelector((state: RootState) => state.auth);
@@ -14,19 +15,48 @@ const ViewerHead: React.FC<{}> = ({}) => {
   const toggleTheme = () => setIsDarkMode((prev) => !prev);
   const toggleModal = () => setIsOpenModal((prev) => !prev);
   const [users, setUsers] = useState<any>(null);
-  useEffect(() => {
-    const storedUser = localStorage.getItem("user");
-    if (storedUser) {
-      setUsers(JSON.parse(storedUser));
-    }
 
+  useEffect(() => {
+    // This check ensures that document is only used in the browser
+    if (typeof document !== "undefined") {
+      const style = document.createElement("style");
+      style.textContent = `
+        @keyframes shine {
+          to {
+            left: 100%;
+          }
+        }
+        
+        .animate-shine {
+          animation: shine 2s infinite;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  }, []);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const decodeUser = await getUserFromCookies();
+      console.log(decodeUser, "decoded user");
+      setUsers(decodeUser.user);
+    };
+
+    console.log(users, "user in the head");
+    // Ensure this runs only on the client side
     if (isDarkMode) {
       document.documentElement.classList.add("dark");
     } else {
       document.documentElement.classList.remove("dark");
     }
+    fetchData();
   }, [isDarkMode]);
-  console.log(user, "user in the viewerhead");
+
+  const [currentPath, setCurrentPath] = useState("");
+
+  useEffect(() => {
+    setCurrentPath(window.location.pathname);
+  }, []);
 
   return (
     <header className="flex items-center justify-between px-6 py-4 bg-black dark:bg-white transition-all duration-500 ease-in-out">
@@ -48,8 +78,15 @@ const ViewerHead: React.FC<{}> = ({}) => {
 
       {/* Right Section */}
       <div className="flex items-center space-x-4">
-        <button className="px-4 py-2 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600 transition">
-          Streamer Sign Up
+        <button className="relative overflow-hidden bg-purple-600 text-white px-6 py-3 rounded-lg font-medium">
+          <div className="flex items-center gap-2">
+            <FaUser className="text-lg" />
+            Become a streamer
+          </div>
+          {/* Shine effect overlay */}
+          <div className="absolute top-0 left-0 w-full h-full">
+            <div className="absolute top-0 -left-[100%] w-[120%] h-full bg-gradient-to-r from-transparent via-white/30 to-transparent skew-x-[25deg] animate-shine" />
+          </div>
         </button>
         <div className="flex gap-2 justify-center items-center">
           <button
@@ -64,7 +101,14 @@ const ViewerHead: React.FC<{}> = ({}) => {
           </h4>
         </div>
       </div>
-      {isModalOpen && <Modal onClose={toggleModal} />}
+      {isModalOpen && (
+        <Modal
+          currentPath={currentPath}
+          email={users?.email}
+          username={users?.username}
+          onClose={toggleModal}
+        />
+      )}
     </header>
   );
 };

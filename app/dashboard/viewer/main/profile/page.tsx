@@ -1,47 +1,106 @@
 "use client";
-import { getUser, uploadToCloudinary } from "@/app/lib/action/user";
-import { APIUserResponse, UserProfile } from "@/types/types";
+import {
+  getUser,
+  updateProfile,
+  uploadToCloudinary,
+} from "@/app/lib/action/user";
+import { APIUserResponse, SocialLink, UserProfile } from "@/types/types";
 import { Loader2 } from "lucide-react";
 import { useEffect, useState, memo, useCallback } from "react";
 import { useFormik } from "formik";
+import { getUserFromCookies } from "@/app/lib/action/auth";
+import * as Yup from "yup";
 
 interface FormValues {
-  email: string;
+  id: string;
   username: string;
-  bio: string;
-  dateOfBirth: string;
-  profilePicture: string | null;
+  email: string;
+  role: string;
+  isActive: boolean;
   tags: string[];
-  socialLinks: { platform: string; url: string }[];
-  phonenumber: string;
+  social_links: SocialLink[];
+  date_of_birth: string;
+  bio: string;
+  profileImageURL: string;
+  phone_number: string;
 }
+
+const ProfileValidationSchema = Yup.object().shape({
+  username: Yup.string()
+    .min(3, "Username must be at least 3 characters")
+    .max(30, "Username must be less than 30 characters")
+    .matches(
+      /^[a-zA-Z0-9_]+$/,
+      "Username can only contain letters, numbers, and underscores"
+    )
+    .required("Username is required"),
+
+  bio: Yup.string().max(500, "Bio must be less than 500 characters"),
+
+  dateOfBirth: Yup.date()
+    .max(new Date(), "Date of birth cannot be in the future")
+    .required("Date of birth is required"),
+
+  phonenumber: Yup.string().matches(
+    /^\+?[\d\s-]+$/,
+    "Invalid phone number format"
+  ),
+});
 
 // Memoized Input Component
 const InputField = memo(
-  ({ label, ...props }: { label: string; [key: string]: any }) => (
+  ({
+    label,
+    error,
+    touched,
+    ...props
+  }: {
+    label: string;
+    error?: string;
+    touched?: boolean;
+    [key: string]: any;
+  }) => (
     <div>
       <label className="block text-sm font-medium text-gray-300 mb-1">
         {label}
       </label>
       <input
         {...props}
-        className="w-full px-3 py-2 bg-gray-800 text-white rounded-md border border-gray-700 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 outline-none transition"
+        className={`w-full px-3 py-2 bg-gray-800 text-white rounded-md border ${
+          error && touched ? "border-red-500" : "border-gray-700"
+        } focus:border-purple-500 focus:ring-1 focus:ring-purple-500 outline-none transition`}
+        max={30}
+        min={30}
       />
+      {error && touched && <p className="mt-1 text-sm text-red-500">{error}</p>}
     </div>
   )
 );
 
 // Memoized TextArea Component
 const TextArea = memo(
-  ({ label, ...props }: { label: string; [key: string]: any }) => (
+  ({
+    label,
+    error,
+    touched,
+    ...props
+  }: {
+    label: string;
+    error?: string;
+    touched?: boolean;
+    [key: string]: any;
+  }) => (
     <div>
       <label className="block text-sm font-medium text-gray-300 mb-1">
         {label}
       </label>
       <textarea
         {...props}
-        className="w-full px-3 py-2 bg-gray-800 text-white rounded-md border border-gray-700 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 outline-none transition min-h-[100px]"
+        className={`w-full px-3 py-2 bg-gray-800 text-white rounded-md border ${
+          error && touched ? "border-red-500" : "border-gray-700"
+        } focus:border-purple-500 focus:ring-1 focus:ring-purple-500 outline-none transition min-h-[100px]`}
       />
+      {error && touched && <p className="mt-1 text-sm text-red-500">{error}</p>}
     </div>
   )
 );
@@ -49,11 +108,11 @@ const TextArea = memo(
 // Memoized Profile Picture Section
 const ProfilePictureSection = memo(
   ({
-    profilePicture,
+    profileImageURL,
     isSubmitting,
     onImageUpload,
   }: {
-    profilePicture: string | null;
+    profileImageURL: string | null;
     isSubmitting: boolean;
     onImageUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   }) => (
@@ -67,7 +126,7 @@ const ProfilePictureSection = memo(
             </div>
           )}
           <img
-            src={profilePicture || "/assets/avathar/avatar.png"}
+            src={profileImageURL || "/assets/avathar/avatar.png"}
             alt="Profile"
             className="w-full h-full object-cover"
           />
@@ -91,7 +150,6 @@ const ProfilePictureSection = memo(
   )
 );
 
-// Memoized Social Links Section
 const SocialLinksSection = memo(
   ({
     socialLinks,
@@ -101,6 +159,8 @@ const SocialLinksSection = memo(
     onNewUrlChange,
     onAddLink,
     onRemoveLink,
+    errors,
+    touched,
   }: {
     socialLinks: { platform: string; url: string }[];
     newPlatform: string;
@@ -109,31 +169,57 @@ const SocialLinksSection = memo(
     onNewUrlChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
     onAddLink: () => void;
     onRemoveLink: (index: number) => void;
+    errors?: any;
+    touched?: any;
   }) => (
     <div className="space-y-4">
       <h3 className="text-lg font-medium text-white">Social Media</h3>
       <div className="space-y-4">
         {socialLinks.map((link, index) => (
-          <div key={index} className="flex gap-4 items-center">
-            <input
-              type="text"
-              value={link.platform}
-              readOnly
-              className="flex-1 px-3 py-2 bg-gray-700 text-gray-400 rounded-md border border-gray-700"
-            />
-            <input
-              type="text"
-              value={link.url}
-              readOnly
-              className="flex-1 px-3 py-2 bg-gray-700 text-gray-400 rounded-md border border-gray-700"
-            />
-            <button
-              type="button"
-              onClick={() => onRemoveLink(index)}
-              className="p-2 text-red-500 hover:text-red-400 transition"
-            >
-              Remove
-            </button>
+          <div key={index} className="space-y-2">
+            <div className="flex gap-4 items-center">
+              <input
+                type="text"
+                value={link.platform}
+                readOnly
+                className={`flex-1 px-3 py-2 bg-gray-700 text-gray-400 rounded-md border ${
+                  errors?.socialLinks?.[index]?.platform &&
+                  touched?.socialLinks?.[index]?.platform
+                    ? "border-red-500"
+                    : "border-gray-700"
+                }`}
+              />
+              <input
+                type="text"
+                value={link.url}
+                readOnly
+                className={`flex-1 px-3 py-2 bg-gray-700 text-gray-400 rounded-md border ${
+                  errors?.socialLinks?.[index]?.url &&
+                  touched?.socialLinks?.[index]?.url
+                    ? "border-red-500"
+                    : "border-gray-700"
+                }`}
+              />
+              <button
+                type="button"
+                onClick={() => onRemoveLink(index)}
+                className="p-2 text-red-500 hover:text-red-400 transition"
+              >
+                Remove
+              </button>
+            </div>
+            {errors?.socialLinks?.[index]?.platform &&
+              touched?.socialLinks?.[index]?.platform && (
+                <p className="text-sm text-red-500">
+                  {errors.socialLinks[index].platform}
+                </p>
+              )}
+            {errors?.socialLinks?.[index]?.url &&
+              touched?.socialLinks?.[index]?.url && (
+                <p className="text-sm text-red-500">
+                  {errors.socialLinks[index].url}
+                </p>
+              )}
           </div>
         ))}
         <div className="flex gap-4">
@@ -164,7 +250,7 @@ const SocialLinksSection = memo(
   )
 );
 
-// Memoized Tags Section
+// Updated TagsSection Component
 const TagsSection = memo(
   ({
     tags,
@@ -172,12 +258,16 @@ const TagsSection = memo(
     onInputTagChange,
     onAddTag,
     onRemoveTag,
+    error,
+    touched,
   }: {
     tags: string[];
     inputTag: string;
     onInputTagChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
     onAddTag: () => void;
     onRemoveTag: (tag: string) => void;
+    error?: string;
+    touched?: boolean;
   }) => (
     <div className="space-y-4">
       <h3 className="text-lg font-medium text-white">Tags</h3>
@@ -200,14 +290,21 @@ const TagsSection = memo(
           ))}
         </div>
         <div className="flex gap-2">
-          <input
-            type="text"
-            value={inputTag}
-            onChange={onInputTagChange}
-            className="flex-1 px-3 py-2 bg-gray-800 text-white rounded-md border border-gray-700 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 outline-none transition"
-            placeholder="Add a tag"
-            maxLength={20}
-          />
+          <div className="flex-1">
+            <input
+              type="text"
+              value={inputTag}
+              onChange={onInputTagChange}
+              className={`w-full px-3 py-2 bg-gray-800 text-white rounded-md border ${
+                error && touched ? "border-red-500" : "border-gray-700"
+              } focus:border-purple-500 focus:ring-1 focus:ring-purple-500 outline-none transition`}
+              placeholder="Add a tag"
+              maxLength={20}
+            />
+            {error && touched && (
+              <p className="mt-1 text-sm text-red-500">{error}</p>
+            )}
+          </div>
           <button
             type="button"
             onClick={onAddTag}
@@ -224,7 +321,6 @@ const TagsSection = memo(
     </div>
   )
 );
-
 // Memoized Profile Content
 const ProfileContent = memo(
   ({
@@ -291,7 +387,7 @@ const ProfileContent = memo(
       <div className="max-w-2xl mx-auto p-6 space-y-8">
         <form onSubmit={formik.handleSubmit} className="space-y-6">
           <ProfilePictureSection
-            profilePicture={formik.values.profilePicture}
+            profileImageURL={formik.values.profileImageURL}
             isSubmitting={isSubmitting}
             onImageUpload={handleImageUpload}
           />
@@ -303,17 +399,23 @@ const ProfileContent = memo(
                 label="Date of Birth"
                 type="date"
                 {...formik.getFieldProps("dateOfBirth")}
+                error={formik.errors.dateOfBirth}
+                touched={formik.touched.dateOfBirth}
               />
               <InputField
                 label="Username"
                 type="text"
                 {...formik.getFieldProps("username")}
+                error={formik.errors.username}
+                touched={formik.touched.username}
                 placeholder="Enter username"
               />
             </div>
             <TextArea
               label="Bio"
               {...formik.getFieldProps("bio")}
+              error={formik.errors.bio}
+              touched={formik.touched.bio}
               placeholder="Tell us about yourself"
             />
           </div>
@@ -326,6 +428,8 @@ const ProfileContent = memo(
             onNewUrlChange={handleNewUrlChange}
             onAddLink={handleAddSocialLink}
             onRemoveLink={handleRemoveSocialLink}
+            errors={formik.errors}
+            touched={formik.touched}
           />
 
           <TagsSection
@@ -334,6 +438,8 @@ const ProfileContent = memo(
             onInputTagChange={handleInputTagChange}
             onAddTag={handleAddTag}
             onRemoveTag={handleRemoveTag}
+            error={formik.errors.tags}
+            touched={formik.touched.tags}
           />
 
           <div className="pt-6">
@@ -359,6 +465,15 @@ const ProfilePage = () => {
   const [inputTag, setInputTag] = useState("");
   const [newPlatform, setNewPlatform] = useState("");
   const [newUrl, setNewUrl] = useState("");
+  const [users, setUsers] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const decodeUser = await getUserFromCookies();
+      setUsers(decodeUser.user);
+    };
+    fetchData();
+  }, []);
 
   const tabs = [
     { id: "profile", name: "Profile" },
@@ -368,33 +483,54 @@ const ProfilePage = () => {
     { id: "notifications", name: "Notifications" },
   ];
 
+  const [updateTrigger, setUpdateTrigger] = useState(0);
+
   const formik = useFormik({
     initialValues: {
       email: "",
       username: "",
       bio: "",
       dateOfBirth: "",
-      profilePicture: null as string | null, 
-      tags: [] as string[], 
-      socialLinks: [] as { platform: string; url: string }[], 
+      profileImageURL: null as string | null,
+      tags: [] as string[],
+      socialLinks: [] as { platform: string; url: string }[],
       phonenumber: "",
     },
+    validationSchema: ProfileValidationSchema,
+    enableReinitialize: true,
     onSubmit: async (values) => {
+      console.log(values, "before submitting");
       setIsSubmitting(true);
       try {
-        const response = await fetch("/api/profile", {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(values),
+        // Combine existing and new data while removing duplicates
+        const result = await getUser(users.email);
+        const existingData: any = result.data || {};
+        const existingTags = Array.isArray(existingData.tags)
+          ? existingData.tags
+          : [];
+        const uniqueTags = Array.from(
+          new Set([...existingTags, ...values.tags])
+        );
+
+        const existingSocialLinks = Array.isArray(existingData.social_links)
+          ? existingData.social_links
+          : [];
+
+        const socialLinksMap = new Map();
+        [...existingSocialLinks, ...values.socialLinks].forEach((link) => {
+          socialLinksMap.set(link.platform, link);
         });
+        const uniqueSocialLinks = Array.from(socialLinksMap.values());
+        const updatedValues = {
+          ...values,
+          tags: uniqueTags,
+          socialLinks: uniqueSocialLinks,
+        };
 
-        if (!response.ok) {
-          throw new Error("Failed to update profile");
+        const updateResult = await updateProfile(updatedValues, users.email);
+        if (updateResult) {
+          setUpdateTrigger((prev) => prev + 1);
         }
-
-        alert("Profile updated successfully!");
       } catch (error) {
         console.error("Error updating profile:", error);
         alert("Failed to update profile. Please try again.");
@@ -408,14 +544,10 @@ const ProfilePage = () => {
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        const storedUser = localStorage.getItem("user");
-        if (!storedUser) {
-          console.error("No user found in localStorage");
-          return;
-        }
-
-        const userParsed = JSON.parse(storedUser);
-        const result = await getUser(userParsed.email);
+        const SessionUser = await getUserFromCookies();
+        console.log(SessionUser, "sessionUser");
+        const email = SessionUser?.user?.email as string;
+        const result = await getUser(email);
 
         if (result.success && result.data) {
           formik.setValues({
@@ -423,7 +555,7 @@ const ProfilePage = () => {
             username: result.data?.username || "",
             bio: result.data.bio || "",
             dateOfBirth: result.data.date_of_birth || "",
-            profilePicture: result.data.profileImageURL,
+            profileImageURL: result.data.profileImageURL,
             tags: Array.isArray(result.data.tags) ? result.data.tags : [],
             socialLinks: Array.isArray(result.data.social_links)
               ? result.data.social_links.map((link: any) => ({
@@ -442,7 +574,7 @@ const ProfilePage = () => {
     };
 
     fetchData();
-  }, []);
+  }, [updateTrigger]);
 
   const handleImageUpload = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -452,7 +584,8 @@ const ProfilePage = () => {
       try {
         setIsSubmitting(true);
         const imageUrl = await uploadToCloudinary(file);
-        formik.setFieldValue("profilePicture", imageUrl);
+        console.log(imageUrl, "image link");
+        formik.setFieldValue("profileImageURL", imageUrl);
       } catch (error) {
         console.error("Error uploading image:", error);
       } finally {
@@ -464,17 +597,25 @@ const ProfilePage = () => {
 
   const handleAddTag = useCallback(() => {
     if (inputTag && formik.values.tags.length < 5) {
-      formik.setFieldValue("tags", [...formik.values.tags, inputTag]);
+      if (!formik.values.tags.includes(inputTag)) {
+        formik.setFieldValue("tags", [...formik.values.tags, inputTag]);
+      }
       setInputTag("");
     }
   }, [inputTag, formik.values.tags]);
 
   const handleAddSocialLink = useCallback(() => {
     if (newPlatform && newUrl) {
-      formik.setFieldValue("socialLinks", [
-        ...formik.values.socialLinks,
-        { platform: newPlatform, url: newUrl },
-      ]);
+      const isDuplicate = formik.values.socialLinks.some(
+        (link) => link.platform.toLowerCase() === newPlatform.toLowerCase()
+      );
+
+      if (!isDuplicate) {
+        formik.setFieldValue("socialLinks", [
+          ...formik.values.socialLinks,
+          { platform: newPlatform, url: newUrl },
+        ]);
+      }
       setNewPlatform("");
       setNewUrl("");
     }
@@ -503,7 +644,7 @@ const ProfilePage = () => {
   return (
     <div className="min-h-screen bg-black w-full">
       <div className="border-b border-gray-800">
-        <h1 className="text-2xl font-bold text-white p-6">Settings</h1>
+        <h1 className="text-2xl font-bold text-white p-6">Profile Settings</h1>
         <nav className="flex space-x-8 px-6 overflow-x-auto">
           {tabs.map((tab) => (
             <button

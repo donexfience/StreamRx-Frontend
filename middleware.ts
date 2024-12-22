@@ -47,6 +47,7 @@ export async function middleware(req: NextRequest) {
       "/dashboard/viewer",
       "/dashboard/viewer/main",
       "/profile",
+      "/dashboard/admin"
     ];
     if (protectedPaths.some((path) => req.nextUrl.pathname.startsWith(path))) {
       return NextResponse.redirect(new URL("/sign-in/viewer", req.url));

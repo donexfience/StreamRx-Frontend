@@ -1,4 +1,6 @@
 "use server";
+
+import jwt from "jsonwebtoken";
 import { graphqlAuthApi } from "@/redux/services/auth/graphqlAuthApi";
 import { store } from "@/redux/store";
 import { LoginFormSchema, RegistrationFormSchema } from "../defintion";
@@ -279,4 +281,57 @@ export async function getAuthCookies() {
       message: "Failed to retrieve cookies",
     };
   }
+}
+
+interface TokenPayload {
+  username: string;
+  email: string;
+  role: string;
+  exp: number;
+  iat: number;
+}
+
+export async function getUserFromCookies() {
+  try {
+    const cookieStore = await cookies();
+    const accessToken = cookieStore.get("refreshToken")?.value;
+
+    if (!accessToken) {
+      return {
+        success: false,
+        message: "No access token found in cookies.",
+      };
+    }
+
+    // Decode the token
+    const decodedToken = jwt.decode(accessToken) as TokenPayload | null;
+
+    if (!decodedToken) {
+      return {
+        success: false,
+        message: "Invalid token. Unable to decode.",
+      };
+    }
+
+    return {
+      success: true,
+      user: decodedToken,
+    };
+  } catch (error) {
+    console.error("Error decoding token:", error);
+    return {
+      success: false,
+      message: "An unexpected error occurred while decoding the token.",
+    };
+  }
+}
+
+export async function RegisterationCookieSet() {
+  const cookieStore = await cookies();
+  cookieStore.set("registration_initiated", "true", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    maxAge: 15 * 60,
+  });
 }

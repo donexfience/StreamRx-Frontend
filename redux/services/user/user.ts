@@ -29,7 +29,12 @@ export interface UserResponse {
 }
 
 export interface UpdateUserInput {
-  name?: string;
-  email?: string;
-  password?: string;
+  email: string;
+  username: string;
+  bio: string;
+  dateOfBirth: string;
+  profileImageURL: string | null;
+  tags: string[];
+  socialLinks: { platform: string; url: string }[];
+  phonenumber: string;
 }

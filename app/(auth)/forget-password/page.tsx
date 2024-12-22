@@ -6,6 +6,7 @@ import { LockIcon } from "lucide-react";
 import { useDispatch } from "react-redux";
 import { useForgotPasswordMutation } from "@/redux/services/auth/graphqlAuthApi";
 import toast from "react-hot-toast";
+import { RegisterationCookieSet } from "@/app/lib/action/auth";
 
 const ForgetPasswordPage: React.FC = () => {
   const [email, setEmail] = useState("");
@@ -21,6 +22,7 @@ const ForgetPasswordPage: React.FC = () => {
       const response = await forgotPassword({ email }).unwrap();
       console.log(response?.data);
       if (response?.data?.forgotPassword?.success) {
+        await RegisterationCookieSet();
         toast.success(
           response.data?.forgotPassword.message || "OTP sent successfully!"
         );

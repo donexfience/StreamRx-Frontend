@@ -1,5 +1,5 @@
 import { UpdateUserInput, UserResponse } from "./user";
-import { UserBaseQuery } from "./userBaseQuery";
+import { baseQueryWithTokenHandling, UserBaseQuery } from "./userBaseQuery";
 import {
   createApi,
   fetchBaseQuery,
@@ -8,11 +8,11 @@ import {
 
 export const httpUserApi = createApi({
   reducerPath: "httpUserApi",
-  baseQuery: UserBaseQuery,
+  baseQuery: baseQueryWithTokenHandling,
+  keepUnusedDataFor: 0,
   endpoints: (builder) => ({
     getUser: builder.query<UserResponse, { email: string }>({
       query: ({ email }) => {
-        console.log("Calling backend with email:", email);
         return {
           url: `users/getUser?email=${encodeURIComponent(email)}`,
           method: "GET",
@@ -23,14 +23,20 @@ export const httpUserApi = createApi({
 
     updateUser: builder.mutation<
       UserResponse,
-      { id: string; data: UpdateUserInput }
+      { email: string; data: UpdateUserInput }
     >({
-      query: ({ id, data }) => ({
-        url: `/user/${id}`,
-        method: "PUT",
-        body: data,
-        credentials: "include" as const,
-      }),
+      query: ({ email, data }) => {
+        console.log("Calling updateUser with:", { email, data });
+        return {
+          url: `/users/updateUser/${email}`,
+          method: "PUT",
+          body: data,
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        };
+      },
     }),
 
     deleteUser: builder.mutation<{ success: boolean }, void>({
