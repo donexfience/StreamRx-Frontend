@@ -2,11 +2,13 @@
 
 import localFont from "next/font/local";
 import "./globals.css";
+import "@radix-ui/themes/styles.css";
 import { Provider } from "react-redux";
 import { store } from "@/redux/store";
 import { SessionProvider } from "next-auth/react";
 import { Toaster } from "react-hot-toast";
 import { PersistGate } from "redux-persist/integration/react";
+import { Theme, ThemePanel } from "@radix-ui/themes";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -47,7 +49,16 @@ export default function RootLayout({
             },
           }}
         />
-        <Provider store={store}>{children}</Provider>
+        <Provider store={store}>
+          <Theme
+            accentColor="crimson"
+            grayColor="sand"
+            radius="large"
+            scaling="95%"
+          >
+            {children}
+          </Theme>
+        </Provider>
       </body>
     </html>
   );

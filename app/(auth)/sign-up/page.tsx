@@ -101,7 +101,7 @@ const SignupPage = () => {
           );
           break;
         case "verified":
-          router.replace("/dashboard");
+          router.replace("/dashboard/viewer");
           break;
         case "expired":
           setErrors({ general: "Registration expired. Please start again." });
@@ -117,7 +117,7 @@ const SignupPage = () => {
 
   const handleGoogleLogin = async () => {
     try {
-      const result = await signIn("google", { callbackUrl: "/dashboard" });
+      const result = await signIn("googleViewer", { callbackUrl: "/dashboard/viewer" });
       if (result?.error) {
         toast.error("Google login failed");
       }

@@ -28,8 +28,8 @@ const AdminNav = () => {
     <div className="h-full">
       <div className="w-64 bg-[#1C1C27] p-6 space-y-8 h-screen">
         <div className="flex items-center gap-2 text-xl font-bold">
-          <span className="bg-white text-black p-1 rounded">S</span>
-          StreamRx
+          <span className="bg-white text-black px-2 rounded">S</span>
+          <h1 className="text-lg text-white"> StreamRx</h1>
         </div>
 
         <nav className="space-y-2">
@@ -46,7 +46,7 @@ const AdminNav = () => {
               text: "Streamers",
               navigate: "/streamers",
             },
-            { icon: <Users2 size={20} />, text: "Users", navigate: "/users" },
+            { icon: <Users2 size={20} />, text: "Users", navigate: "/dashboard/admin/users" },
             {
               icon: <Award size={20} />,
               text: "Achievements",

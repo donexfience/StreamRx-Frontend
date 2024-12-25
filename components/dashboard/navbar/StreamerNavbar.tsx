@@ -2,6 +2,7 @@
 import Link from "next/link";
 import React, { useState } from "react";
 import { X, Menu } from "lucide-react";
+import { clearAuthCookie } from "@/app/lib/action/auth";
 
 const StreamerNavbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -10,6 +11,10 @@ const StreamerNavbar = () => {
     setIsMenuOpen(!isMenuOpen);
   };
 
+  const handleLogout = async () => {
+    await clearAuthCookie("refreshToken");
+    await clearAuthCookie("accessToken");
+  };
   const menuItems = [
     { label: "Products", href: "#" },
     { label: "About", href: "#" },
@@ -33,14 +38,15 @@ const StreamerNavbar = () => {
             <Link
               className="text-black hover:text-blue-500"
               href="/sign-in/viewer"
+              onClick={handleLogout}
             >
               Sign up
             </Link>
-            <Link href='/dashboard/streamer/main'
+            <Link
+              href="/dashboard/streamer/main"
               className="flex items-center px-3 py-2 border-2 border-black text-black rounded-2xl 
                 backdrop-blur-lg bg-white/20 hover:bg-blue-500 hover:text-white transition cursor-pointer"
             >
-
               Get Started
               <svg
                 viewBox="0 0 24 24"

@@ -8,11 +8,13 @@ import {
   ForgotPasswordResponse,
   GoogleLoginInput,
   GoogleLoginResponse,
+  googleLoginStreamerResponse,
   LoginInput,
   LoginResponse,
   RegisterationInitateInput,
   RegistrationInitiateResponse,
   RegistrationStatusResponse,
+  StreamerLoginResponse,
   VerifyRegisterationInput,
   VerifyRegistrationResponse,
 } from "./auth";
@@ -77,7 +79,7 @@ export const graphqlAuthApi = createApi({
       }),
     }),
 
-    StreamerLogin: builder.mutation<LoginResponse, LoginInput>({
+    StreamerLogin: builder.mutation<StreamerLoginResponse, LoginInput>({
       query: (input) => ({
         url: "/graphql",
         method: "POST",
@@ -243,6 +245,35 @@ export const graphqlAuthApi = createApi({
         },
       }),
     }),
+    googleLoginStreamer: builder.mutation<googleLoginStreamerResponse, GoogleLoginInput>({
+      query: (input) => ({
+        url: "/graphql",
+        method: "POST",
+        body: {
+          query: `
+            mutation GoogleLoginStreamer($input: GoogleLoginInput!) {
+              googleLoginStreamer(input: $input) {
+                success
+                message
+                user {
+                  id
+                  email
+                  name
+                  role
+                  isVerified
+                  isActive
+                }
+                token {
+                  accessToken
+                  refreshToken
+                }
+              }
+            }
+          `,
+          variables: { input },
+        },
+      }),
+    }),    
     resendOtp: builder.mutation<
       { message: string; status: RegistrationStatusResponse },
       { email: string }
@@ -270,6 +301,57 @@ export const graphqlAuthApi = createApi({
         },
       }),
     }),
+    blockOrUnblock: builder.mutation<
+      {
+        success: boolean;
+        message: string;
+        email: string | null;
+        status: boolean | null;
+      },
+      { email: string; value: boolean }
+    >({
+      query: (input) => ({
+        url: "/graphql",
+        method: "POST",
+        body: {
+          query: `
+            mutation BlockOrUnblock($input: BlockOrUnblockInput!) {
+              blockOrUnblock(input: $input) {
+                success
+                message
+                email
+                status
+              }
+            }
+          `,
+          variables: { input },
+        },
+      }),
+    }),
+    users: builder.query<any, void>({
+      query: () => ({
+        url: "/graphql",
+        method: "POST",
+        body: {
+          query: `
+            query {
+              users {
+                email
+                username
+                phoneNumber
+                dateOfBirth
+                profileImageUrl
+                bio
+                isActive
+                isVerified
+                role
+                googleId
+              }
+            }
+          `,
+        },
+      }),
+    }),
   }),
 });
 
@@ -281,7 +363,9 @@ export const {
   useChangePasswordMutation,
   useLogoutMutation,
   useStreamerLoginMutation,
+  useUsersQuery,
+  useBlockOrUnblockMutation,
   useGoogleLoginMutation,
   useRegistrationStatusQuery,
-  useResendOtpMutation
+  useResendOtpMutation,
 } = graphqlAuthApi;

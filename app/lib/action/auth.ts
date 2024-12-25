@@ -106,7 +106,8 @@ export async function credentialsLoginStreamer(formData: {
         })
       )
       .unwrap();
-    const loginData = response?.data?.login;
+    console.log(response, "response");
+    const loginData = response?.data?.loginStreamer;
     console.log(loginData, "logindata");
     if (loginData?.success) {
       const cookieStore = await cookies();
@@ -334,4 +335,35 @@ export async function RegisterationCookieSet() {
     sameSite: "strict",
     maxAge: 15 * 60,
   });
+}
+
+export async function fetchUserData() {
+  try {
+    // Dispatch the action to fetch user data from the API endpoint
+    const response = await store
+      .dispatch(graphqlAuthApi.endpoints.users.initiate())
+      .unwrap();
+    console.log(response, "response from backend");
+    const userData = response?.data?.getUserData;
+
+    if (userData) {
+      store.dispatch(setCredentials({ user: userData }));
+
+      return {
+        success: true,
+        user: userData,
+      };
+    } else {
+      return {
+        success: false,
+        message: "No user data found.",
+      };
+    }
+  } catch (err) {
+    console.error("Error during fetching user data:", err);
+    return {
+      success: false,
+      message: "An unexpected error occurred. Please try again.",
+    };
+  }
 }

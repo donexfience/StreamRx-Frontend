@@ -31,12 +31,11 @@ const Login = () => {
       if (result.success) {
         if (result.user != undefined) {
           dispatch(setCredentials({ user: result?.user }));
-          localStorage.setItem('user', JSON.stringify(result.user));
+          localStorage.setItem("user", JSON.stringify(result.user));
         }
         toast.success("Login Successful!");
 
         router.replace("/dashboard");
-
       } else {
         if (result.errors) {
           setErrors(result.errors);
@@ -51,8 +50,11 @@ const Login = () => {
     }
   };
   const handleGoogleLogin = async () => {
+    const currenturl = new URL(window.location.href);
+    currenturl.searchParams.delete("error");
+    router.replace(currenturl.toString(), undefined);
     try {
-      const result = await signIn("google", {
+      const result = await signIn("googleViewer", {
         callbackUrl: "/dashboard/viewer",
       }); // Redirect to the home page after login
       if (result?.error) {

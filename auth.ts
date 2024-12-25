@@ -1,3 +1,4 @@
+import { googleLoginStreamer } from './redux/services/auth/auth';
 import Credentials from "next-auth/providers/credentials";
 import NextAuth from "next-auth";
 import { graphqlAuthApi } from "./redux/services/auth/graphqlAuthApi";
@@ -10,6 +11,12 @@ import { setAuthCookies } from "./app/lib/action/auth";
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
     GoogleProvider({
+      id: "googleViewer",
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    }),
+    GoogleProvider({
+      id: "googleStreamer",
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
     }),
@@ -60,9 +67,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       },
     }),
   ],
+  pages: {
+    signIn: "/sign-in/viewer",
+    error: "/sign-in/viewer",
+  },
   callbacks: {
     async signIn({ account, profile }) {
-      if (account?.provider === "google") {
+      if (account?.provider === "googleViewer") {
         try {
           const response = await store
             .dispatch(
@@ -74,7 +85,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             )
             .unwrap();
           console.log(response, "response");
-          console.log(response.data.googleLogin.token,"token got for google login")
+          console.log(
+            response.data.googleLogin.token,
+            "token got for google login"
+          );
           if (response.data?.googleLogin?.token) {
             setAuthCookies(
               response.data.googleLogin.token?.accessToken,
@@ -87,19 +101,41 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           return false;
         }
       }
+      if (account?.provider === "googleStreamer") {
+        try {
+          const response = await store
+            .dispatch(
+              graphqlAuthApi.endpoints.googleLoginStreamer.initiate({
+                email: profile?.email!,
+                name: profile?.name as string,
+                googleId: account?.providerAccountId!,
+              })
+            )
+            .unwrap();
+          console.log(response, "response");
+          console.log(
+            response.data.googleLoginStreamer.token,
+            "token got for google login"
+          );
+          if (response.data?.googleLoginStreamer?.token) {
+            setAuthCookies(
+              response.data.googleLoginStreamer.token?.accessToken,
+              response.data.googleLoginStreamer.token?.refreshToken
+            );
+          }
+          return response?.data?.googleLoginStreamer.success || false;
+        } catch (error) {
+          console.error("Google login failed:", error);
+          return false;
+        }
+      }
       return true;
     },
-
-    async session({ session, token }) {
-      if (token) {
-        console.log(token, "token in seesion");
-        session.user.id = token.id as string;
-        session.user.name = token.name;
-      }
-      return session;
-    },
     async jwt({ token, account, profile }) {
-      if (account?.provider === "google") {
+      if (
+        account?.provider === "googleViewer" ||
+        account?.provider === "googleStreamer"
+      ) {
         console.log(profile, "profile");
         token.id = profile?.sub;
         token.name = profile?.name;
@@ -108,6 +144,15 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       return token;
     },
     async redirect({ url, baseUrl }) {
+      if (url.includes("/api/auth/error")) {
+        if (url.includes("googleViewer")) {
+          return `${baseUrl}/signin/viewer`;
+        }
+        if (url.includes("googleStreamer")) {
+          return `${baseUrl}/signin/streamer`;
+        }
+        return `${baseUrl}/signup`;
+      }
       if (url.startsWith(baseUrl)) {
         return url;
       }

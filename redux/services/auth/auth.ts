@@ -50,9 +50,41 @@ export interface GoogleLoginResponse {
   };
 }
 
+export interface googleLoginStreamerResponse {
+  data: {
+    googleLoginStreamer: {
+      success: boolean;
+      message: string;
+      user?: {
+        id: string;
+        email: string;
+        name?: string;
+        role: string;
+        isVerified: boolean;
+        isActive?: boolean;
+      };
+      token?: {
+        accessToken: string;
+        refreshToken: string;
+      };
+    };
+  };
+}
+
 export interface LoginResponse {
   data: {
     login: {
+      success: boolean;
+      message: string;
+      user: User;
+      token: TokenPair;
+    };
+  };
+}
+
+export interface StreamerLoginResponse {
+  data: {
+    loginStreamer: {
       success: boolean;
       message: string;
       user: User;

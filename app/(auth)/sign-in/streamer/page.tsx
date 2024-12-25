@@ -4,11 +4,12 @@ import {
   credentialsLoginStreamer,
 } from "@/app/lib/action/auth";
 import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
-import React, { useState, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import React, { useState, useRef, useEffect } from "react";
 import toast from "react-hot-toast";
 
 const StreamerLogin = () => {
+  const searchParams = useSearchParams();
   const [isPlaying, setIsPlaying] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const router = useRouter();
@@ -18,9 +19,31 @@ const StreamerLogin = () => {
     {}
   );
 
+  useEffect(() => {
+    const error = searchParams.get("error");
+    if (error) {
+      const errorMessages = {
+        AuthenticationFailed: "Authentication failed. Please try again.",
+        AccessDenied:
+          "Access was denied. Please try again with correct permissions.",
+        Default: "An error occurred. Please try again.",
+      };
+
+      toast.error(
+        errorMessages[error as keyof typeof errorMessages] ||
+          errorMessages.Default
+      );
+    }
+  }, [searchParams]);
+
   const handleGoogleLogin = async () => {
+    const currenturl = new URL(window.location.href);
+    currenturl.searchParams.delete("error");
+    router.replace(currenturl.toString(), undefined);
     try {
-      const result = await signIn("google", { callbackUrl: "/dashboard/streamer" }); // Redirect to the home page after login
+      const result = await signIn("googleStreamer", {
+        callbackUrl: "/dashboard/streamer",
+      }); // Redirect to the home page after login
 
       if (result?.error) {
         toast.error("Google login failed");
@@ -38,8 +61,8 @@ const StreamerLogin = () => {
       console.log(result, "result");
       if (result.success) {
         toast.success("Login Successful!");
-        localStorage.setItem('user', JSON.stringify(result.user));
-        router.push("/streamer-dashboard");
+        localStorage.setItem("user", JSON.stringify(result.user));
+        router.push("/dashboard/streamer");
       } else {
         if (result.errors) {
           console.log(result.errors, "errors");

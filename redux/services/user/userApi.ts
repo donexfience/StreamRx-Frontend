@@ -1,4 +1,4 @@
-import { UpdateUserInput, UserResponse } from "./user";
+import { GetALlUserResponse, UpdateUserInput, UserResponse } from "./user";
 import { baseQueryWithTokenHandling, UserBaseQuery } from "./userBaseQuery";
 import {
   createApi,
@@ -39,14 +39,26 @@ export const httpUserApi = createApi({
       },
     }),
 
-    deleteUser: builder.mutation<{ success: boolean }, void>({
+    getAllUser: builder.query<GetALlUserResponse, void>({
       query: () => ({
-        url: "/user",
-        method: "DELETE",
+        url: `users/getAllUsers`,
+        method: "GET",
+        credentials: "include",
+      }),
+    }),
+
+    blockUnblockUser: builder.mutation<{ success: boolean }, { id: string }>({
+      query: ({ id }) => ({
+        url: `/users/BlockOrUnblock${id}`,
+        method: "PUT",
       }),
     }),
   }),
 });
 
-export const { useGetUserQuery, useUpdateUserMutation, useDeleteUserMutation } =
-  httpUserApi;
+export const {
+  useGetUserQuery,
+  useUpdateUserMutation,
+  useGetAllUserQuery,
+  useBlockUnblockUserMutation,
+} = httpUserApi;

@@ -24,8 +24,23 @@ export interface UserResponse {
     date_of_birth: string;
     bio: string;
     profileImageURL: string;
-    phone_number:string
+    phone_number: string;
   };
+}
+
+interface Users {
+  id: string;
+  username: string;
+  email: string;
+  role: string;
+  isActive: boolean;
+  tags: string
+  profileImageURL: string;
+  phone_number: string;
+}
+
+export  interface GetALlUserResponse {
+  users: Users[];
 }
 
 export interface UpdateUserInput {
