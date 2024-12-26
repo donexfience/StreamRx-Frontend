@@ -13,17 +13,19 @@ interface SocialLink {
 }
 
 export interface UserResponse {
-  id: string;
-  username: string;
-  email: string;
-  role: string;
-  isActive: boolean;
-  tags: string[];
-  social_links: SocialLink[];
-  date_of_birth: string;
-  bio: string;
-  profileImageURL: string;
-  phone_number: string;
+  user: {
+    id: string;
+    username: string;
+    email: string;
+    role: string;
+    isActive: boolean;
+    tags: string[];
+    social_links: SocialLink[];
+    date_of_birth: string;
+    bio: string;
+    profileImageURL: string;
+    phone_number: string;
+  };
 }
 
 interface Users {

@@ -492,6 +492,7 @@ const ProfilePage = () => {
     data: userData,
     isLoading: isUserDataLoading,
     error: userError,
+    refetch: refetchUser,
   } = useGetUserQuery(
     { email: sessionUser?.email },
     {
@@ -574,24 +575,25 @@ const ProfilePage = () => {
 
   useEffect(() => {
     if (userData) {
+
       formik.setValues({
-        email: userData.email || "",
-        username: userData?.username || "",
-        bio: userData.bio || "",
-        dateOfBirth: userData.date_of_birth || "",
-        profileImageURL: userData.profileImageURL,
-        tags: Array.isArray(userData.tags) ? userData.tags : [],
-        socialLinks: Array.isArray(userData.social_links)
-          ? userData.social_links.map((link: any) => ({
+        email: userData?.user?.email || "",
+        username: userData?.user?.username || "",
+        bio:userData?.user?.bio || "",
+        dateOfBirth: userData?.user?.date_of_birth || "",
+        profileImageURL:userData?.user?.profileImageURL,
+        tags: Array.isArray(userData?.user?.tags) ? userData?.user?.tags : [],
+        socialLinks: Array.isArray(userData?.user?.social_links)
+          ? userData?.user?.social_links.map((link: any) => ({
               platform: link.platform || "",
               url: link.url || "",
             }))
           : [],
-        phonenumber: userData.phone_number || "",
+        phonenumber: userData?.user?.phone_number || "",
       });
     }
   }, [userData]);
-
+  console.log(userData,"user data set in the formikkkkkkkkkkkkk")
   const handleImageUpload = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
