@@ -8,11 +8,6 @@ export async function middleware(req: NextRequest) {
   const refreshToken = refreshTokenCookie?.value;
   const registrationInitiated = registrationInitiatedCookie?.value;
 
-  console.log(refreshToken, "refreshToken in the middleware");
-  console.log(
-    registrationInitiated,
-    "registration_initiated in the middleware"
-  );
 
   let userRole = null;
 
@@ -22,7 +17,6 @@ export async function middleware(req: NextRequest) {
       const { payload } = await jwtVerify(refreshToken, secret);
       console.log(payload, "Payload from token");
       userRole = payload.role;
-      console.log(userRole, "User role in middleware");
 
       // Redirect to the appropriate dashboard if the user visits the landing page (`/`)
       if (req.nextUrl.pathname === "/") {

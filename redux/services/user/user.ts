@@ -13,19 +13,17 @@ interface SocialLink {
 }
 
 export interface UserResponse {
-  user: {
-    id: string;
-    username: string;
-    email: string;
-    role: string;
-    isActive: boolean;
-    tags: string[];
-    social_links: SocialLink[];
-    date_of_birth: string;
-    bio: string;
-    profileImageURL: string;
-    phone_number: string;
-  };
+  id: string;
+  username: string;
+  email: string;
+  role: string;
+  isActive: boolean;
+  tags: string[];
+  social_links: SocialLink[];
+  date_of_birth: string;
+  bio: string;
+  profileImageURL: string;
+  phone_number: string;
 }
 
 interface Users {
@@ -34,12 +32,12 @@ interface Users {
   email: string;
   role: string;
   isActive: boolean;
-  tags: string
+  tags: string;
   profileImageURL: string;
   phone_number: string;
 }
 
-export  interface GetALlUserResponse {
+export interface GetALlUserResponse {
   users: Users[];
 }
 

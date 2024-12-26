@@ -10,6 +10,10 @@ import { useEffect, useState, memo, useCallback } from "react";
 import { useFormik } from "formik";
 import { getUserFromCookies } from "@/app/lib/action/auth";
 import * as Yup from "yup";
+import {
+  useGetUserQuery,
+  useUpdateUserMutation,
+} from "@/redux/services/user/userApi";
 
 interface FormValues {
   id: string;
@@ -325,9 +329,10 @@ const TagsSection = memo(
 const ProfileContent = memo(
   ({
     formik,
-    isLoading,
     isSubmitting,
+    sessionUser,
     inputTag,
+    isUserDataLoading,
     setInputTag,
     newPlatform,
     setNewPlatform,
@@ -340,11 +345,12 @@ const ProfileContent = memo(
     handleRemoveSocialLink,
   }: {
     formik: any;
-    isLoading: boolean;
     isSubmitting: boolean;
     inputTag: string;
+    isUserDataLoading: boolean;
     setInputTag: (value: string) => void;
     newPlatform: string;
+    sessionUser: any;
     setNewPlatform: (value: string) => void;
     newUrl: string;
     setNewUrl: (value: string) => void;
@@ -375,7 +381,7 @@ const ProfileContent = memo(
       [setInputTag]
     );
 
-    if (isLoading) {
+    if (!sessionUser || isUserDataLoading) {
       return (
         <div className="flex justify-center items-center h-64">
           <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
@@ -460,21 +466,48 @@ const ProfileContent = memo(
 
 const ProfilePage = () => {
   const [activeTab, setActiveTab] = useState("profile");
-  const [isLoading, setIsLoading] = useState(false);
+  const [updateUser] = useUpdateUserMutation();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [inputTag, setInputTag] = useState("");
   const [newPlatform, setNewPlatform] = useState("");
   const [newUrl, setNewUrl] = useState("");
-  const [users, setUsers] = useState<any>(null);
+  const [sessionUser, setSessionUser] = useState<any>(null);
+  const [isLoadingSession, setIsLoadingSession] = useState(true);
 
   useEffect(() => {
-    const fetchData = async () => {
-      const decodeUser = await getUserFromCookies();
-      setUsers(decodeUser.user);
+    const fetchSessionUser = async () => {
+      try {
+        const user = await getUserFromCookies();
+        setSessionUser(user?.user);
+      } catch (error) {
+        console.error("Error fetching session:", error);
+      } finally {
+        setIsLoadingSession(false);
+      }
     };
-    fetchData();
+    fetchSessionUser();
   }, []);
 
+  const {
+    data: userData,
+    isLoading: isUserDataLoading,
+    error: userError,
+  } = useGetUserQuery(
+    { email: sessionUser?.email },
+    {
+      skip: isLoadingSession || !sessionUser?.email,
+      pollingInterval: 0,
+      refetchOnMountOrArgChange: true,
+    }
+  );
+
+  // Add some debugging
+  useEffect(() => {
+    console.log("Session User:", sessionUser);
+    console.log("User Data:", userData);
+    console.log("Loading:", isUserDataLoading);
+    console.log("Error:", userError);
+  }, [sessionUser, userData, isUserDataLoading, userError]);
   const tabs = [
     { id: "profile", name: "Profile" },
     { id: "stream", name: "Likes and watch history" },
@@ -482,8 +515,6 @@ const ProfilePage = () => {
     { id: "preferences", name: "Preferences" },
     { id: "notifications", name: "Notifications" },
   ];
-
-  const [updateTrigger, setUpdateTrigger] = useState(0);
 
   const formik = useFormik({
     initialValues: {
@@ -503,8 +534,7 @@ const ProfilePage = () => {
       setIsSubmitting(true);
       try {
         // Combine existing and new data while removing duplicates
-        const result = await getUser(users.email);
-        const existingData: any = result.data || {};
+        const existingData: any = userData || {};
         const existingTags = Array.isArray(existingData.tags)
           ? existingData.tags
           : [];
@@ -526,10 +556,12 @@ const ProfilePage = () => {
           tags: uniqueTags,
           socialLinks: uniqueSocialLinks,
         };
-
-        const updateResult = await updateProfile(updatedValues, users.email);
+        const updateResult = await updateUser({
+          email: sessionUser.email,
+          data: updatedValues,
+        });
         if (updateResult) {
-          setUpdateTrigger((prev) => prev + 1);
+          await refetchUser();
         }
       } catch (error) {
         console.error("Error updating profile:", error);
@@ -541,40 +573,24 @@ const ProfilePage = () => {
   });
 
   useEffect(() => {
-    const fetchData = async () => {
-      setIsLoading(true);
-      try {
-        const SessionUser = await getUserFromCookies();
-        console.log(SessionUser, "sessionUser");
-        const email = SessionUser?.user?.email as string;
-        const result = await getUser(email);
-
-        if (result.success && result.data) {
-          formik.setValues({
-            email: result.data.email || "",
-            username: result.data?.username || "",
-            bio: result.data.bio || "",
-            dateOfBirth: result.data.date_of_birth || "",
-            profileImageURL: result.data.profileImageURL,
-            tags: Array.isArray(result.data.tags) ? result.data.tags : [],
-            socialLinks: Array.isArray(result.data.social_links)
-              ? result.data.social_links.map((link: any) => ({
-                  platform: link.platform || "",
-                  url: link.url || "",
-                }))
-              : [],
-            phonenumber: result.data.phone_number || "",
-          });
-        }
-      } catch (error) {
-        console.error("Error fetching profile data:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [updateTrigger]);
+    if (userData) {
+      formik.setValues({
+        email: userData.email || "",
+        username: userData?.username || "",
+        bio: userData.bio || "",
+        dateOfBirth: userData.date_of_birth || "",
+        profileImageURL: userData.profileImageURL,
+        tags: Array.isArray(userData.tags) ? userData.tags : [],
+        socialLinks: Array.isArray(userData.social_links)
+          ? userData.social_links.map((link: any) => ({
+              platform: link.platform || "",
+              url: link.url || "",
+            }))
+          : [],
+        phonenumber: userData.phone_number || "",
+      });
+    }
+  }, [userData]);
 
   const handleImageUpload = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -668,12 +684,13 @@ const ProfilePage = () => {
         {activeTab === "profile" && (
           <ProfileContent
             formik={formik}
-            isLoading={isLoading}
+            sessionUser={sessionUser}
             isSubmitting={isSubmitting}
             inputTag={inputTag}
             setInputTag={setInputTag}
             newPlatform={newPlatform}
             setNewPlatform={setNewPlatform}
+            isUserDataLoading={isUserDataLoading}
             newUrl={newUrl}
             setNewUrl={setNewUrl}
             handleImageUpload={handleImageUpload}

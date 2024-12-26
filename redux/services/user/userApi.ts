@@ -13,6 +13,11 @@ export const httpUserApi = createApi({
   endpoints: (builder) => ({
     getUser: builder.query<UserResponse, { email: string }>({
       query: ({ email }) => {
+        console.log(
+          email,
+          "calling get single useraaaaaaaaaaaaaaaaaaaaa",
+          email
+        );
         return {
           url: `users/getUser?email=${encodeURIComponent(email)}`,
           method: "GET",
