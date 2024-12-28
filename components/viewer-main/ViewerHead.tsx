@@ -7,6 +7,7 @@ import { FaMoon, FaSun, FaUser } from "react-icons/fa";
 import { useSelector } from "react-redux";
 import { Modal } from "../modals/ProfileModall";
 import { getUserFromCookies } from "@/app/lib/action/auth";
+import StreamerRequset from "../modals/StreamerRequset";
 
 const ViewerHead: React.FC<{}> = ({}) => {
   const { user } = useSelector((state: RootState) => state.auth);
@@ -15,6 +16,8 @@ const ViewerHead: React.FC<{}> = ({}) => {
   const toggleTheme = () => setIsDarkMode((prev) => !prev);
   const toggleModal = () => setIsOpenModal((prev) => !prev);
   const [users, setUsers] = useState<any>(null);
+  const [isStreamRequestModal, setIsStreamRequestModal] = useState(false);
+  const toggleRequestModal = () => setIsStreamRequestModal((prev) => !prev);
 
   useEffect(() => {
     // This check ensures that document is only used in the browser
@@ -26,9 +29,48 @@ const ViewerHead: React.FC<{}> = ({}) => {
             left: 100%;
           }
         }
-        
-        .animate-shine {
-          animation: shine 2s infinite;
+
+        .button-container {
+          position: relative;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          width: 250px;
+          height: 50px;
+          background-color: #4a00e0; /* Purple background */
+          color: white;
+          font-weight: bold;
+          font-size: 16px;
+          text-transform: uppercase;
+          border-radius: 10px;
+          overflow: hidden;
+          cursor: pointer;
+          box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.2);
+        }
+
+        .button-container .shine {
+          position: absolute;
+          top: 0;
+          left: -100%; /* Starts off-screen */
+          width: 100%;
+          height: 100%;
+          background: linear-gradient(
+            to right,
+            transparent 0%,
+            rgba(255, 255, 255, 0.6) 50%,
+            transparent 100%
+          );
+          transform: skewX(-20deg); /* Diagonal skew */
+          animation: shine 2s infinite; /* Shine animation */
+        }
+
+        .button-content {
+          position: relative;
+          z-index: 1;
+          display: flex;
+          align-items: center;
+          gap: 8px;
         }
       `;
       document.head.appendChild(style);
@@ -78,16 +120,29 @@ const ViewerHead: React.FC<{}> = ({}) => {
 
       {/* Right Section */}
       <div className="flex items-center space-x-4">
-        <button className="relative overflow-hidden bg-purple-600 text-white px-6 py-3 rounded-lg font-medium">
-          <div className="flex items-center gap-2">
-            <FaUser className="text-lg" />
-            Become a streamer
+        <div className="relative inline-block">
+          <button className="flex items-center px-4 py-2 bg-transparent text-gray-700 rounded-md  hover:bg-gray-300">
+            <span className="mr-2">🌐</span>
+            <span className="text-white font-bold">English</span>
+            <span className="ml-2">▼</span>
+          </button>
+          <div className="dropdown-content absolute hidden bg-gray-200 text-gray-700 border border-gray-300 rounded-md mt-1 w-full">
+            <a href="#" className="block px-4 py-2 hover:bg-gray-300">
+              English
+            </a>
+            <a href="#" className="block px-4 py-2 hover:bg-gray-300">
+              Hindi
+            </a>
           </div>
-          {/* Shine effect overlay */}
-          <div className="absolute top-0 left-0 w-full h-full">
-            <div className="absolute top-0 -left-[100%] w-[120%] h-full bg-gradient-to-r from-transparent via-white/30 to-transparent skew-x-[25deg] animate-shine" />
+        </div>
+
+        <div className="button-container" onClick={toggleRequestModal}>
+          <div className="shine"></div>
+          <div className="button-content">
+            <FaUser />
+            Streamer Sign Up
           </div>
-        </button>
+        </div>
         <div className="flex gap-2 justify-center items-center">
           <button
             onClick={toggleTheme}
@@ -109,6 +164,7 @@ const ViewerHead: React.FC<{}> = ({}) => {
           onClose={toggleModal}
         />
       )}
+      {isStreamRequestModal && <StreamerRequset onClose={toggleRequestModal} />}
     </header>
   );
 };
