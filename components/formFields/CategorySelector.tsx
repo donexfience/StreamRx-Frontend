@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { X } from 'lucide-react';
+import React, { useState } from "react";
+import { X } from "lucide-react";
+import { FormErrors } from "../modals/StreamerRequset";
 
 interface CategoryTagProps {
   category: string;
@@ -22,14 +23,18 @@ const CategoryTag: React.FC<CategoryTagProps> = ({ category, onRemove }) => (
 interface CategorySelectorProps {
   selectedCategories: any;
   onCategoryChange: (categories: string[]) => void;
+  errors?: FormErrors;
+  setErrors: any;
 }
 
 const CategorySelector: React.FC<CategorySelectorProps> = ({
   selectedCategories,
   onCategoryChange,
+  errors,
+  setErrors,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
-  
+
   const categories = [
     "Gaming",
     "IRL",
@@ -48,10 +53,13 @@ const CategorySelector: React.FC<CategorySelectorProps> = ({
     "Podcasting",
     "Fashion",
     "Beauty",
-    "Business"
+    "Business",
   ];
 
   const handleCategorySelect = (category: string) => {
+    if (categories.length > 0) {
+      setErrors((prevErrors: any) => ({ ...prevErrors, category: undefined }));
+    }
     if (!selectedCategories.includes(category)) {
       onCategoryChange([...selectedCategories, category]);
     }
@@ -59,13 +67,17 @@ const CategorySelector: React.FC<CategorySelectorProps> = ({
   };
 
   const handleRemoveCategory = (categoryToRemove: string) => {
-    onCategoryChange(selectedCategories.filter(cat => cat !== categoryToRemove));
+    onCategoryChange(
+      selectedCategories.filter((cat: any) => cat !== categoryToRemove)
+    );
   };
 
   return (
     <div className="space-y-2">
-      <label className="block text-sm font-medium text-gray-700">Categories</label>
-      
+      <label className="block text-sm font-medium text-gray-700">
+        Categories
+      </label>
+
       <div className="relative">
         <button
           type="button"
@@ -74,13 +86,15 @@ const CategorySelector: React.FC<CategorySelectorProps> = ({
         >
           Select categories...
         </button>
-        
+        {errors && (
+          <p className="text-red-500 text-sm mt-1">{errors.category}</p>
+        )}
         {isOpen && (
           <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
             <div className="p-1">
               {categories
-                .filter(cat => !selectedCategories.includes(cat))
-                .map(category => (
+                .filter((cat) => !selectedCategories.includes(cat))
+                .map((category) => (
                   <button
                     key={category}
                     onClick={() => handleCategorySelect(category)}
@@ -96,7 +110,7 @@ const CategorySelector: React.FC<CategorySelectorProps> = ({
 
       {selectedCategories.length > 0 && (
         <div className="flex flex-wrap gap-2 mt-2">
-          {selectedCategories.map(category => (
+          {selectedCategories.map((category: any) => (
             <CategoryTag
               key={category}
               category={category}

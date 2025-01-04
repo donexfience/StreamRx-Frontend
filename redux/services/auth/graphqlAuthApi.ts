@@ -245,7 +245,10 @@ export const graphqlAuthApi = createApi({
         },
       }),
     }),
-    googleLoginStreamer: builder.mutation<googleLoginStreamerResponse, GoogleLoginInput>({
+    googleLoginStreamer: builder.mutation<
+      googleLoginStreamerResponse,
+      GoogleLoginInput
+    >({
       query: (input) => ({
         url: "/graphql",
         method: "POST",
@@ -273,7 +276,7 @@ export const graphqlAuthApi = createApi({
           variables: { input },
         },
       }),
-    }),    
+    }),
     resendOtp: builder.mutation<
       { message: string; status: RegistrationStatusResponse },
       { email: string }
@@ -352,6 +355,44 @@ export const graphqlAuthApi = createApi({
         },
       }),
     }),
+    changeRole: builder.mutation<
+      {
+        data: {
+          changeRole: {
+            success: boolean;
+            message: string;
+            user: {
+              role: string;
+              email: string;
+            };
+          };
+        };
+      },
+      { email: string; role: string }
+    >({
+      query: ({ email, role }) => ({
+        url: "/graphql",
+        method: "POST",
+        body: {
+          query: `
+          mutation ChangeRole($email: String!, $role: String!) {
+            changeRole(input: {email: $email, role: $role}) {
+              success
+              message
+              user {
+                role
+                email
+              }
+            }
+          }
+        `,
+          variables: {
+            email,
+            role,
+          },
+        },
+      }),
+    }),
   }),
 });
 
@@ -367,5 +408,6 @@ export const {
   useBlockOrUnblockMutation,
   useGoogleLoginMutation,
   useRegistrationStatusQuery,
+  useChangeRoleMutation,
   useResendOtpMutation,
 } = graphqlAuthApi;

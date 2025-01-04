@@ -58,6 +58,62 @@ export const httpUserApi = createApi({
         method: "PUT",
       }),
     }),
+
+    createStreamerRequest: builder.mutation({
+      query: ({ data }) => ({
+        url: `/users/streamerrequests`,
+        method: "POST",
+        body: data,
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "*/*",
+        },
+      }),
+    }),
+
+    updateStreamerRequest: builder.mutation<
+      {
+        success: boolean;
+        message: string;
+        request: {
+          status: string;
+        };
+      },
+      { id: string; data: Record<string, any> }
+    >({
+      query: ({ id, data }) => ({
+        url: `users/streamer-requests/${id}`,
+        method: "PUT",
+        body: data,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }),
+    }),
+
+    getAllStreamerRequests: builder.query<
+      { success: boolean; message: string; requests: unknown[] },
+      void
+    >({
+      query: () => ({
+        url: `users/streamer-requests`,
+        method: "GET",
+      }),
+    }),
+
+    getStreamerRequestById: builder.query<
+      { success: boolean; message: string; request: unknown },
+      { id: string }
+    >({
+      query: ({ id }) => {
+        console.log("Fetching the streamer request", id);
+        return {
+          url: `users/streamer-requests/${id}`,
+          method: "GET",
+        };
+      },
+    }),
   }),
 });
 
@@ -66,4 +122,8 @@ export const {
   useUpdateUserMutation,
   useGetAllUserQuery,
   useBlockUnblockUserMutation,
+  useGetAllStreamerRequestsQuery,
+  useCreateStreamerRequestMutation,
+  useGetStreamerRequestByIdQuery,
+  useUpdateStreamerRequestMutation,
 } = httpUserApi;

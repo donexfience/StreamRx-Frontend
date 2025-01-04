@@ -140,7 +140,7 @@ const ViewerHead: React.FC<{}> = ({}) => {
           <div className="shine"></div>
           <div className="button-content">
             <FaUser />
-            Streamer Sign Up
+           Become a Streamer
           </div>
         </div>
         <div className="flex gap-2 justify-center items-center">

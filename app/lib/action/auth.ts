@@ -290,6 +290,8 @@ interface TokenPayload {
   role: string;
   exp: number;
   iat: number;
+  id:string
+
 }
 
 export async function getUserFromCookies() {

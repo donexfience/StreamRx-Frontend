@@ -12,7 +12,8 @@ import {
   Users,
   Users2,
 } from "lucide-react";
-import Link from "next/link"; // Import Link
+import Link from "next/link";
+import { usePathname } from "next/navigation"; 
 import React, { useState } from "react";
 
 const AdminNav = () => {
@@ -23,68 +24,83 @@ const AdminNav = () => {
   };
 
   const [isDark, setIsDark] = useState(true);
+  const pathname = usePathname();
+
+  // Helper function to check if a path is active
+  const isActiveLink = (path: string) => {
+    if (path === "/dashboard" && pathname === "/dashboard") {
+      return true;
+    }
+    return pathname !== "/dashboard" && pathname.includes(path);
+  };
+
+  const sidebarItems = [
+    {
+      icon: <LayoutDashboard size={20} />,
+      text: "Dashboard",
+      navigate: "/dashboard",
+    },
+    { icon: <Users size={20} />, text: "Streamers", navigate: "/dashboard/admin/streamers" },
+    {
+      icon: <Users2 size={20} />,
+      text: "Users",
+      navigate: "/dashboard/admin/users",
+    },
+    {
+      icon: <Award size={20} />,
+      text: "Achievements",
+      navigate: "/achievements",
+    },
+    {
+      icon: <Copyright size={20} />,
+      text: "Copyrights",
+      navigate: "/copyrights",
+    },
+    {
+      icon: <Shield size={20} />,
+      text: "Moderators & editors",
+      navigate: "/moderators",
+    },
+    {
+      icon: <Users2 size={20} />,
+      text: "Multistream",
+      navigate: "/multistream",
+    },
+    {
+      icon: <FileText size={20} />,
+      text: "Content Management",
+      navigate: "/content-management",
+    },
+    {
+      icon: <Play size={20} />,
+      text: "Live streams",
+      navigate: "/live-streams",
+    },
+    {
+      icon: <Settings size={20} />,
+      text: "Settings",
+      navigate: "/settings",
+    },
+  ];
 
   return (
     <div className="h-full">
       <div className="w-64 bg-[#1C1C27] p-6 space-y-8 h-screen">
         <div className="flex items-center gap-2 text-xl font-bold">
           <span className="bg-white text-black px-2 rounded">S</span>
-          <h1 className="text-lg text-white"> StreamRx</h1>
+          <h1 className="text-lg text-white">StreamRx</h1>
         </div>
 
         <nav className="space-y-2">
-          <Link href="/dashboard">
-            <div className="flex items-center gap-3 text-purple-500 bg-purple-500/10 p-3 rounded-lg cursor-pointer">
-              <LayoutDashboard size={20} />
-              <span>Dashboard</span>
-            </div>
-          </Link>
-
-          {[
-            {
-              icon: <Users size={20} />,
-              text: "Streamers",
-              navigate: "/streamers",
-            },
-            { icon: <Users2 size={20} />, text: "Users", navigate: "/dashboard/admin/users" },
-            {
-              icon: <Award size={20} />,
-              text: "Achievements",
-              navigate: "/achievements",
-            },
-            {
-              icon: <Copyright size={20} />,
-              text: "Copyrights",
-              navigate: "/copyrights",
-            },
-            {
-              icon: <Shield size={20} />,
-              text: "Moderators & editors",
-              navigate: "/moderators",
-            },
-            {
-              icon: <Users2 size={20} />,
-              text: "Multistream",
-              navigate: "/multistream",
-            },
-            {
-              icon: <FileText size={20} />,
-              text: "Content Management",
-              navigate: "/content-management",
-            },
-            {
-              icon: <Play size={20} />,
-              text: "Live streams",
-              navigate: "/live-streams",
-            },
-            {
-              icon: <Settings size={20} />,
-              text: "Settings",
-              navigate: "/settings",
-            },
-          ].map((item, index) => (
+          {sidebarItems.map((item, index) => (
             <Link href={item.navigate} key={index}>
-              <div className="flex items-center gap-4 text-gray-400 hover:bg-gray-800 p-4 rounded-lg cursor-pointer">
+              <div
+                className={`flex items-center gap-4 p-4 rounded-lg cursor-pointer ${
+                  pathname === item.navigate
+                    ? "bg-purple-500 text-white"
+                    : "text-gray-400 hover:bg-gray-800"
+                }`}
+              >
                 {item.icon}
                 <span>{item.text}</span>
               </div>
@@ -111,7 +127,9 @@ const AdminNav = () => {
           </button>
         </div>
         <button
-          className={`p-2 rounded ${isDark ? "bg-purple-500" : "bg-gray-800"} ml-6`}
+          className={`p-2 rounded ${
+            isDark ? "bg-purple-500" : "bg-gray-800"
+          } ml-6`}
           onClick={handleLogout}
         >
           Logout

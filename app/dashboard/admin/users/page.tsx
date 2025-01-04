@@ -13,6 +13,7 @@ import {
   useUsersQuery,
 } from "@/redux/services/auth/graphqlAuthApi";
 import toast from "react-hot-toast";
+import Pagination from "@/components/paginations/Pagination";
 
 interface User {
   id: string;
@@ -43,7 +44,7 @@ const AdminDashboard = () => {
 
     setIsBlocking(true);
     try {
-      console.log(selectedUser.isActive)
+      console.log(selectedUser.isActive);
       const result = await blockOrUnblock({
         email,
         value: !selectedUser.isActive,
@@ -67,6 +68,10 @@ const AdminDashboard = () => {
     setSelectedUser(user);
     setIsModalOpen(true);
   };
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
 
   console.log(usersData, "user data got ");
 
@@ -75,10 +80,10 @@ const AdminDashboard = () => {
       const username = user.username?.toLowerCase() || "";
       const email = user.email?.toLowerCase() || "";
       const query = searchQuery.toLowerCase();
-
       return username.includes(query) || email.includes(query);
     }) || [];
 
+  const currentUsers = filteredUsers.slice(indexOfFirstItem, indexOfLastItem);
   const topCreators = filteredUsers
     .filter((user: User) => user.isVerified)
     .slice(0, 4);
@@ -181,7 +186,7 @@ const AdminDashboard = () => {
               </tr>
             </thead>
             <tbody>
-              {filteredUsers.map((user: User) => (
+              {currentUsers.map((user: User) => (
                 <tr key={user.id} className="border-t border-slate-700">
                   <td className="py-4">
                     <div className="flex items-center space-x-3">
@@ -215,7 +220,7 @@ const AdminDashboard = () => {
                       {user.isActive ? "active" : "blocked"}
                     </span>
                   </td>
-                  <td>{user.role}</td>
+                  <td>{user.role.split(".")[1]}</td>
                   <td>{user.dateOfBirth}</td>
                   <td>
                     <button
@@ -230,6 +235,14 @@ const AdminDashboard = () => {
               ))}
             </tbody>
           </table>
+          <div className="mt-6">
+            <Pagination
+              totalItems={filteredUsers.length}
+              itemsPerPage={itemsPerPage}
+              currentPage={currentPage}
+              onPageChange={setCurrentPage}
+            />
+          </div>
         </div>
       </div>
 
@@ -264,7 +277,7 @@ const AdminDashboard = () => {
               >
                 {isBlocking
                   ? "Processing..."
-                  : selectedUser?.isBlocked
+                  : !selectedUser?.isActive
                   ? "Unblock"
                   : "Block"}
               </button>
