@@ -8,6 +8,10 @@ import { useSelector } from "react-redux";
 import { Modal } from "../modals/ProfileModall";
 import { getUserFromCookies } from "@/app/lib/action/auth";
 import StreamerRequset from "../modals/StreamerRequset";
+import {
+  useGetStreamerRequestByEmailQuery,
+  useGetStreamerRequestByIdQuery,
+} from "@/redux/services/user/userApi";
 
 const ViewerHead: React.FC<{}> = ({}) => {
   const { user } = useSelector((state: RootState) => state.auth);
@@ -83,9 +87,6 @@ const ViewerHead: React.FC<{}> = ({}) => {
       console.log(decodeUser, "decoded user");
       setUsers(decodeUser.user);
     };
-
-    console.log(users, "user in the head");
-    // Ensure this runs only on the client side
     if (isDarkMode) {
       document.documentElement.classList.add("dark");
     } else {
@@ -95,7 +96,11 @@ const ViewerHead: React.FC<{}> = ({}) => {
   }, [isDarkMode]);
 
   const [currentPath, setCurrentPath] = useState("");
-
+  const { data, error, isLoading } = useGetStreamerRequestByEmailQuery(
+    { email: users?.email },
+    { skip: !users?.email }
+  );
+  console.log(data, "streamerrequest got in header");
   useEffect(() => {
     setCurrentPath(window.location.pathname);
   }, []);
@@ -140,7 +145,7 @@ const ViewerHead: React.FC<{}> = ({}) => {
           <div className="shine"></div>
           <div className="button-content">
             <FaUser />
-           Become a Streamer
+            {data?.request?.status === "rejected" ? "Request rejected" : "Become a streamer"}
           </div>
         </div>
         <div className="flex gap-2 justify-center items-center">

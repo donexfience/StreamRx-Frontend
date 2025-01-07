@@ -66,8 +66,8 @@ const StreamerRequestsDashboard: React.FC = () => {
       console.log(data, error, "got data and error");
       if (data?.data?.changeRole?.success) {
         if (updateData?.request?.status === "approved") {
-          console.log("Role changed successfully", data);
-          toast.success("Role changed successfully");
+          console.log("Request Approved he is now streamer", data);
+          toast.success("Request Approved he is now streamer");
           refetch();
         }
       } else {
@@ -78,28 +78,33 @@ const StreamerRequestsDashboard: React.FC = () => {
     }
   };
 
-  const handleRejection =async (): Promise<void> => {
+  const handleRejection = async (email: string): Promise<void> => {
     try {
-      const { data, error } = await updateUserstatus({
+      const { data, error } = await changeRole({
+        email: email,
+        role: "viewer",
+      });
+
+      const { data: updateData, error: updateError } = await updateUserstatus({
         data: { status: "rejected" },
         id: selectedRequestId!,
       });
-      if (error) {
-        console.error("Error changing role:", error);
-        return;
-      }
-      if (data?.request?.status === "rejected") {
-        toast.success("request rejected successfully");
-        refetch();
+      if (data?.data?.changeRole?.success) {
+        if (updateData?.request?.status === "rejected") {
+          console.log("Role changed successfully", data);
+          toast.success("Request rejected he is now viewer");
+          refetch();
+        }
       } else {
-        console.error("Role change failed:", data?.message);
+        console.error("Role change failed:", data?.data?.changeRole?.message);
       }
+      refetch();
     } catch (error) {
       console.error("An unexpected error occurred:", error);
     }
-  }
+  };
 
-  const { data: allRequests ,refetch} = useGetAllStreamerRequestsQuery<{
+  const { data: allRequests, refetch } = useGetAllStreamerRequestsQuery<{
     data: { success: boolean; message: string; requests: StreamerRequest[] };
     error: unknown;
   }>();
@@ -342,9 +347,13 @@ const StreamerRequestsDashboard: React.FC = () => {
                       ? "Approve"
                       : "Approved"}
                   </button>
-                  <button className="bg-red-500 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-red-600" onClick={(event)=>{
-                    event.preventDefault();
-                    handleRejection()}}>
+                  <button
+                    className="bg-red-500 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-red-600"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      handleRejection(selectedRequestData.email);
+                    }}
+                  >
                     Reject
                   </button>
                 </div>

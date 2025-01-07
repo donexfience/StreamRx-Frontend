@@ -114,6 +114,18 @@ export const httpUserApi = createApi({
         };
       },
     }),
+    getStreamerRequestByEmail: builder.query<
+      { success: boolean; message: string; request: { status: string } },
+      { email: string }
+    >({
+      query: ({ email }) => {
+        console.log("Fetching the streamer request", email);
+        return {
+          url: `users/streamer-requestbyemail/${email}`,
+          method: "GET",
+        };
+      },
+    }),
   }),
 });
 
@@ -126,4 +138,5 @@ export const {
   useCreateStreamerRequestMutation,
   useGetStreamerRequestByIdQuery,
   useUpdateStreamerRequestMutation,
+  useGetStreamerRequestByEmailQuery,
 } = httpUserApi;
