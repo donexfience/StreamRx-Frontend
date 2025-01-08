@@ -19,6 +19,7 @@ import CategorySelector from "../formFields/CategorySelector";
 
 import { uploadToCloudinary } from "@/app/lib/action/user";
 import AccessiblilitySelector from "../formFields/AccessiblilitySelector";
+import { channel } from "diagnostics_channel";
 
 // Types and Interfaces
 interface FormData {
@@ -46,10 +47,12 @@ interface FormData {
   };
 }
 
-interface FormErrors {
+export interface FormErrors {
+  streamDays?: string;
   channelName?: string;
   ownerEmail?: string;
   category?: string;
+  channelAccessibility?: string;
   channelProfileImageUrl?: string;
   channelBannerImageUrl?: string;
   socialLinks?: {
@@ -57,9 +60,10 @@ interface FormErrors {
     instagram?: string;
     facebook?: string;
   };
+  integrations?: string;
+  shedulePreference?: string;
   [key: string]: string | FormErrors["socialLinks"] | undefined;
 }
-
 interface ChannelCreationModalProps {
   onClose: () => void;
   onSubmit: (formData: FormData) => void;
@@ -92,7 +96,7 @@ const INITIAL_FORM_DATA: FormData = {
 };
 
 const ChannelCreationModal: React.FC<ChannelCreationModalProps> = ({
-onClose,
+  onClose,
   onSubmit,
   initialData = {},
 }) => {
@@ -145,6 +149,17 @@ onClose,
         if (!formData.channelAccessibility) {
           newErrors.channelAccessibility =
             "Please select channel accessibility";
+        } else if (
+          !["public", "private", "unlisted"].includes(
+            formData.channelAccessibility
+          )
+        ) {
+          newErrors.channelAccessibility =
+            "Invalid accessibility option selected";
+          console.log(
+            formData.channelAccessibility,
+            "formData.channelAccessibility"
+          );
         }
         break;
 
@@ -153,11 +168,31 @@ onClose,
           newErrors.channelProfileImageUrl =
             "Channel profile image is required";
         }
+        if (!formData.channelBannerImageUrl) {
+          newErrors.channelBannerImageUrl = "Channel banner image is required";
+        }
         break;
 
       case 4:
         if (!formData.schedulePreference) {
           newErrors.schedulePreference = "Please select a schedule preference";
+        }
+        if (!formData.streamSchedule?.days.length) {
+          newErrors.streamDays = "Please select at least one streaming day";
+        }
+
+        if (formData.socialLinks) {
+          const socialLinksErrors: { [key: string]: string } = {};
+          Object.entries(formData.socialLinks).forEach(([platform, url]) => {
+            if (url && !url.startsWith("https://")) {
+              socialLinksErrors[
+                platform
+              ] = `${platform} URL must start with https://`;
+            }
+          });
+          if (Object.keys(socialLinksErrors).length > 0) {
+            newErrors.socialLinks = socialLinksErrors;
+          }
         }
         break;
 
@@ -167,10 +202,18 @@ onClose,
         } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.ownerEmail)) {
           newErrors.ownerEmail = "Please enter a valid email address";
         }
+        // Validate that at least one integration is selected
+        if (
+          !Object.values(formData.integrations || {}).some((value) => value)
+        ) {
+          newErrors.integrations =
+            "Please select at least one platform integration";
+        }
         break;
     }
 
     setErrors(newErrors);
+    console.log(errors, "errors ");
     return Object.keys(newErrors).length === 0;
   };
 
@@ -192,13 +235,18 @@ onClose,
       }
     }
   };
-
   const handleContinue = () => {
-    if (validateForm(currentStep)) {
+    const isValid = validateForm(currentStep);
+    if (isValid) {
       if (currentStep < totalSteps) {
         setCurrentStep(currentStep + 1);
       } else {
         handleSubmit();
+      }
+    } else {
+      const errorElement = document.querySelector(".error-message");
+      if (errorElement) {
+        errorElement.scrollIntoView({ behavior: "smooth", block: "center" });
       }
     }
   };
@@ -325,22 +373,28 @@ onClose,
 
       case 2:
         return (
-          <AccessiblilitySelector
-            errors={errors}
-            setErrros={setErrors}
-            selectedOption={formData.channelAccessibility}
-            setSelectedOption={(value) =>
-              setFormData((prev) => ({
-                ...prev,
-                channelAccessibility: value as
-                  | "public"
-                  | "private"
-                  | "unlisted",
-              }))
-            }
-          />
+          <div>
+            <AccessiblilitySelector
+              errors={errors}
+              setErrors={setErrors}
+              selectedOption={formData.channelAccessibility}
+              setSelectedOption={(value) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  channelAccessibility: value as
+                    | "public"
+                    | "private"
+                    | "unlisted",
+                }))
+              }
+            />
+            {errors.channelAccessibility && (
+              <p className="text-red-500 text-sm mt-1 error-message">
+                {errors.channelAccessibility}
+              </p>
+            )}
+          </div>
         );
-
       case 3:
         return (
           <div className="space-y-6">
@@ -392,7 +446,11 @@ onClose,
                 </div>
               </div>
             </div>
-
+            {errors.channelProfileImageUrl && (
+              <p className="text-red-500 text-sm mt-1 error-message">
+                {errors.channelProfileImageUrl}
+              </p>
+            )}
             <div className="space-y-5">
               <Label
                 className="font-medium mb-3"
@@ -446,6 +504,11 @@ onClose,
                 </div>
               </div>
             </div>
+            {errors.channelBannerImageUrl && (
+              <p className="text-red-500 text-sm mt-1 error-message">
+                {errors.channelBannerImageUrl}
+              </p>
+            )}
           </div>
         );
 
@@ -475,6 +538,11 @@ onClose,
                     <option value="monthly">Monthly</option>
                     <option value="custom">Custom</option>
                   </select>
+                  {errors.schedulePreference && (
+                    <p className="text-red-500 text-sm mt-1 error-message">
+                      {errors.shedulePreference}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <Label>Stream Days</Label>
@@ -502,6 +570,11 @@ onClose,
                         {day}
                       </label>
                     )
+                  )}
+                  {errors.streamDays && (
+                    <p className="text-red-500 text-sm mt-1 error-message">
+                      {errors.streamDays}
+                    </p>
                   )}
                 </div>
                 <div>
@@ -608,6 +681,11 @@ onClose,
                   </label>
                 ))}
               </div>
+              {errors.integrations && (
+                <p className="text-red-500 text-sm mt-1 error-message">
+                  {errors.integrations}
+                </p>
+              )}
             </div>
             <div>
               <Label htmlFor="ownerEmail">Owner Email</Label>

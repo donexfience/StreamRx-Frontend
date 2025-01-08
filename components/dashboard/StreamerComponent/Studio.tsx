@@ -19,9 +19,9 @@ const Studio: React.FC<StudioProps> = ({ onClose }) => {
             Everything you need for a successful live stream right in your
             browser
           </h3>
-          <div className="mt-8">
+          <div className="mt-10">
             <div
-              className="bg-blue-600 w-40 font-bold text-white rounded-lg mt-28 p-4 text-center cursor-pointer"
+              className="bg-blue-600 w-40 font-bold text-white rounded-lg mt-18 p-4 text-center cursor-pointer"
               // href="/dashboard/streamer/main"
               onClick={() => onClose()}
             >
