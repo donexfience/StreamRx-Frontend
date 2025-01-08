@@ -6,9 +6,14 @@ import { clearAuthCookie } from "@/app/lib/action/auth";
 
 const StreamerNavbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [channelCreateModal, setChannelCreateModal] = useState(false);
 
   const toggleMenu = () => {
     setIsMenuOpen(!isMenuOpen);
+  };
+
+  const toggleModal = () => {
+    setChannelCreateModal(!channelCreateModal);
   };
 
   const handleLogout = async () => {
@@ -43,6 +48,7 @@ const StreamerNavbar = () => {
               Sign up
             </Link>
             <Link
+              onClick={toggleModal}
               href="/dashboard/streamer/main"
               className="flex items-center px-3 py-2 border-2 border-black text-black rounded-2xl 
                 backdrop-blur-lg bg-white/20 hover:bg-blue-500 hover:text-white transition cursor-pointer"

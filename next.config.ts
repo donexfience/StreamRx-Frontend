@@ -1,23 +1,28 @@
-import { NextConfig } from 'next';
+import { NextConfig } from "next";
 const nextConfig: NextConfig = {
   // Enable hostname access
   webpack: (config, { isServer }) => {
     return config;
   },
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "30mb",
+    },
+  },
   // Optional: Configure allowed hosts if needed
   headers: async () => {
     return [
       {
-        source: '/:path*',
+        source: "/:path*",
         headers: [
           {
-            key: 'Access-Control-Allow-Origin',
-            value: '*'  // Be more restrictive in production
-          }
+            key: "Access-Control-Allow-Origin",
+            value: "*", 
+          },
         ],
       },
     ];
-  }
+  },
 };
 
 module.exports = nextConfig;

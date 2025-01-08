@@ -1,6 +1,11 @@
-import React from "react";
+"use client";
+import Link from "next/link";
+import React, { useState } from "react";
+interface StudioProps {
+  onClose: () => void;
+}
 
-const Studio: React.FC = () => {
+const Studio: React.FC<StudioProps> = ({ onClose }) => {
   return (
     <div className="w-full mt-20 flex flex-col-reverse lg:flex lg:flex-row">
       {/* Left Section (Text) */}
@@ -14,8 +19,14 @@ const Studio: React.FC = () => {
             Everything you need for a successful live stream right in your
             browser
           </h3>
-          <div className="bg-blue-600 w-40 font-bold text-white rounded-lg mt-5 p-4 text-center cursor-pointer">
-            Create Channel
+          <div className="mt-8">
+            <div
+              className="bg-blue-600 w-40 font-bold text-white rounded-lg mt-28 p-4 text-center cursor-pointer"
+              // href="/dashboard/streamer/main"
+              onClick={() => onClose()}
+            >
+              Create Channel
+            </div>
           </div>
         </div>
       </div>
