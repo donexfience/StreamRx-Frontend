@@ -21,7 +21,11 @@ const ViewerHead: React.FC<{}> = ({}) => {
   const toggleModal = () => setIsOpenModal((prev) => !prev);
   const [users, setUsers] = useState<any>(null);
   const [isStreamRequestModal, setIsStreamRequestModal] = useState(false);
-  const toggleRequestModal = () => setIsStreamRequestModal((prev) => !prev);
+  const toggleRequestModal = (request: any) => {
+    if (request?.request?.status !== "rejected") {
+      setIsStreamRequestModal((prev) => !prev);
+    }
+  };
 
   useEffect(() => {
     // This check ensures that document is only used in the browser
@@ -141,11 +145,16 @@ const ViewerHead: React.FC<{}> = ({}) => {
           </div>
         </div>
 
-        <div className="button-container" onClick={toggleRequestModal}>
+        <div
+          className="button-container"
+          onClick={() => toggleRequestModal(data)}
+        >
           <div className="shine"></div>
           <div className="button-content">
             <FaUser />
-            {data?.request?.status === "rejected" ? "Request rejected" : "Become a streamer"}
+            {data?.request?.status === "rejected"
+              ? "Request rejected"
+              : "Become a streamer"}
           </div>
         </div>
         <div className="flex gap-2 justify-center items-center">
@@ -169,7 +178,7 @@ const ViewerHead: React.FC<{}> = ({}) => {
           onClose={toggleModal}
         />
       )}
-      {isStreamRequestModal && <StreamerRequset onClose={toggleRequestModal} />}
+      {isStreamRequestModal && <StreamerRequset onClose={()=>toggleRequestModal(data)} />}
     </header>
   );
 };
