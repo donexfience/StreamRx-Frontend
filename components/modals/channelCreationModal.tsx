@@ -565,6 +565,10 @@ const ChannelCreationModal: React.FC<ChannelCreationModalProps> = ({
                                 days,
                               },
                             }));
+                            setErrors((prev) => ({
+                              ...prev,
+                              streamDays: undefined,
+                            }));
                           }}
                         />
                         {day}
@@ -694,12 +698,13 @@ const ChannelCreationModal: React.FC<ChannelCreationModalProps> = ({
                 type="email"
                 placeholder="Enter owner email..."
                 value={formData.ownerEmail}
-                onChange={(e) =>
+                onChange={(e) => {
                   setFormData((prev) => ({
                     ...prev,
                     ownerEmail: e.target.value,
-                  }))
-                }
+                  }));
+                  setErrors((prev) => ({ ...prev, ownerEmail: undefined }));
+                }}
                 className={errors.ownerEmail ? "border-red-500" : ""}
               />
               {errors.ownerEmail && (

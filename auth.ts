@@ -1,4 +1,3 @@
-import { googleLoginStreamer } from './redux/services/auth/auth';
 import Credentials from "next-auth/providers/credentials";
 import NextAuth from "next-auth";
 import { graphqlAuthApi } from "./redux/services/auth/graphqlAuthApi";

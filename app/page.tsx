@@ -5,18 +5,25 @@ import { useEffect, useState } from "react";
 import { getUserFromCookies } from "./lib/action/auth";
 
 export default function Home() {
-  const [users, setUsers] = useState<any>({});
+  const [users, setUsers] = useState<any>(null);
+  const [hasReloaded, setHasReloaded] = useState(false);
+
   useEffect(() => {
     const fetchData = async () => {
       const decodeUser = await getUserFromCookies();
       console.log(decodeUser, "decoded user");
-      setUsers(decodeUser.user);
+      setUsers(decodeUser?.user);
     };
+
     fetchData();
-    if (users) {
+  }, []);
+
+  useEffect(() => {
+    if (users && !hasReloaded) {
+      setHasReloaded(true);
       window.location.reload();
     }
-  }, []);
+  }, [users, hasReloaded]);
   return (
     <div>
       <UserHome />

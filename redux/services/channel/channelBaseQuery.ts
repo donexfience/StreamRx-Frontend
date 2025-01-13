@@ -6,8 +6,8 @@ import {
   FetchBaseQueryError,
 } from "@reduxjs/toolkit/query/react";
 
-export const UserBaseQuery = fetchBaseQuery({
-  baseUrl: process.env.NEXT_PUBLIC_USER_SERVICE_URL,
+export const channelBaseQuery = fetchBaseQuery({
+  baseUrl: process.env.NEXT_PUBLIC_CHANNEL_SERVICE_URL,
   credentials: "include",
   prepareHeaders: async (headers) => {
     try {
@@ -33,7 +33,7 @@ export const baseQueryWithTokenHandling: BaseQueryFn = async (
   extraOptions
 ) => {
   try {
-    const result = await UserBaseQuery(args, api, extraOptions);
+    const result = await channelBaseQuery(args, api, extraOptions);
 
     if (result.meta?.response) {
       const response = result.meta.response;
@@ -42,7 +42,6 @@ export const baseQueryWithTokenHandling: BaseQueryFn = async (
 
       // If tokens exist, save them
       if (accessToken && refreshToken) {
-
         await setAuthCookies(accessToken, refreshToken);
       }
     }
@@ -54,4 +53,3 @@ export const baseQueryWithTokenHandling: BaseQueryFn = async (
     };
   }
 };
- 

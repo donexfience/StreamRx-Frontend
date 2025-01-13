@@ -6,7 +6,7 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     serverActions: {
-      bodySizeLimit: "30mb",
+      bodySizeLimit: "500mb",
     },
   },
   // Optional: Configure allowed hosts if needed
