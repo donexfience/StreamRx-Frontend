@@ -1,4 +1,3 @@
-import mongoose, { Types, Document, Schema } from "mongoose";
 
 export interface SocialLinks {
   twitter?: string;
@@ -83,6 +82,8 @@ export interface VideoUploadRequest {
   endScreen?: boolean;
   cards?: boolean;
   videourl: string;
+  selectedPlaylist: string[];
+
 }
 
 export interface VideoMetadata {
@@ -158,6 +159,7 @@ export interface PlaylistRequest {
   thumbnailUrl: string;
   selectedVideos: string[];
   videoUrls: string[];
+  
 }
 
 export interface PlaylistResponse {

@@ -122,7 +122,7 @@ export const MainContent: React.FC = () => {
       <div className="flex items-center justify-center space-x-4 mb-6">
         {/* Left Arrow Button */}
         <button
-          className="bg-pink-600 text-white p-3 rounded-full"
+          className="bg-pink-600 text-white p-3 rounded-full" 
           onClick={handlePrev}
         >
           &#8592;

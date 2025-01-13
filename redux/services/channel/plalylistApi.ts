@@ -31,7 +31,25 @@ export const httpPlaylistApi = createApi({
         params: { page, limit },
       }),
     }),
+    getPlaylistByQuery: builder.query<PlaylistResponse, { query: any }>({
+      query: ({ query }) => {
+        console.log(
+          "Query parameter in RTK Query:",
+          query,
+          encodeURIComponent(query)
+        );
+        return {
+          url: `/playlist/playlist`,
+          method: "GET",  
+          params: { query: encodeURIComponent(query) },
+        };
+      },
+    }),
   }),
 });
 
-export const { useCreatePlaylistMutation,useGetAllPlaylistsQuery } = httpPlaylistApi;
+export const {
+  useCreatePlaylistMutation,
+  useGetAllPlaylistsQuery,
+  useGetPlaylistByQueryQuery,
+  } = httpPlaylistApi;

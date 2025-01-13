@@ -12,7 +12,7 @@ import {
 import { useGetAllPlaylistsQuery } from "@/redux/services/channel/plalylistApi";
 import { useGetChannelByEmailQuery } from "@/redux/services/channel/channelApi";
 import { getUserFromCookies } from "@/app/lib/action/auth";
-import PlaylistCreationModal from "../modaltest/page";
+import PlaylistCreationModal from "@/components/modals/PlayListCreationModal";
 
 const PlaylistPage: React.FC = () => {
   const [dateRangeOpen, setDateRangeOpen] = useState(false);

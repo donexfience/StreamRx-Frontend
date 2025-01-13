@@ -1,6 +1,15 @@
 "use client";
 import React, { useState, useRef } from "react";
-import { X, FileVideo, Check, AlertCircle } from "lucide-react";
+import {
+  X,
+  FileVideo,
+  Check,
+  AlertCircle,
+  Search,
+  ChevronDown,
+  Loader2,
+  Trash2,
+} from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +26,7 @@ import {
 } from "@/app/lib/action/videoprocessing";
 import { uploadToS3 } from "@/app/lib/action/s3";
 import toast from "react-hot-toast";
+import { useGetPlaylistByQueryQuery } from "@/redux/services/channel/plalylistApi";
 
 // Types
 interface VideoFormData {
@@ -35,12 +45,22 @@ interface ValidationErrors {
   general?: string;
 }
 
+interface Playlist {
+  _id: string;
+  name: string;
+  description: string;
+  visibility: "public" | "private" | "unlisted";
+  category: string;
+  tags: string[];
+  thumbnailUrl: string;
+}
+
 interface VideoUploadProps {
   channelId: string | undefined;
   onClose: () => void;
   onSuccess: (videoData: any) => void;
   maxFileSize?: number; // in bytes
-  refetch:any
+  refetch: any;
 }
 
 const CircularProgress = ({ progress = 70 }: { progress: number }) => {
@@ -96,6 +116,9 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isPlaylistSearchOpen, setIsPlaylistSearchOpen] = useState(false);
+  const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist[]>([]);
 
   const [formData, setFormData] = useState<VideoFormData>({
     title: "",
@@ -106,6 +129,16 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
     cards: false,
   });
 
+  const {
+    data: playlist,
+    isLoading,
+    error,
+  } = useGetPlaylistByQueryQuery(
+    { query: searchQuery ? { title: searchQuery } : {} },
+    { skip: !searchQuery }
+  );
+
+  console.log(playlist, "plalylist  ");
   const validateFile = (file: File): string | null => {
     const allowedTypes = ["video/mp4", "video/quicktime", "video/x-msvideo"];
 
@@ -170,6 +203,11 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
   };
   const [uploadVideo] = useUploadVideoMutation();
 
+  const removeSelectedPlaylist = (playListId: string) => {
+    setSelectedPlaylist((prev) => prev.filter((v) => v._id !== playListId));
+  };
+
+  console.log(selectedPlaylist, "selectedPlaylist");
   const handleSubmit = async () => {
     const validationErrors = validateForm();
     if (Object.keys(validationErrors).length > 0) {
@@ -178,7 +216,7 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
     }
 
     setIsUploading(true);
-    setUploadProgress(0)
+    setUploadProgress(0);
     setErrors({});
 
     try {
@@ -186,11 +224,11 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
         throw new Error("No file selected or channel ID missing");
       }
       //first convert it in to buffer
-      setUploadProgress(10); 
+      setUploadProgress(10);
       const buffer = await selectedFile.arrayBuffer();
       const base64Video = Buffer.from(buffer).toString("base64");
       const videoId = Date.now().toString();
-      setUploadProgress(10); 
+      setUploadProgress(10);
       // Pass base64 string to the server function
       const { outputPath, metadata } = await processVideo(base64Video, videoId);
       console.log(outputPath, metadata, "data got 2624");
@@ -228,6 +266,7 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
           size: processedVideoBuffer.length,
         },
         videourl: fileUrl,
+        selectedPlaylist: selectedPlaylist.map((playlist) => playlist._id),
       };
       setUploadProgress(90);
       console.log(videoData, "video data");
@@ -254,6 +293,14 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
     } finally {
       setIsUploading(false);
     }
+  };
+
+  const handlePlaylistSelection = (Playlist: Playlist) => {
+    if (!selectedPlaylist.find((v) => v._id === Playlist._id)) {
+      setSelectedPlaylist((prev) => [...prev, Playlist]);
+    }
+    setIsPlaylistSearchOpen(false);
+    setSearchQuery("");
   };
 
   const renderError = (error: string | undefined) => {
@@ -333,7 +380,7 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
           </div>
         </div>
       ) : (
-        <Card className="w-full max-w-5xl bg-white mt-28 mb-28">
+        <Card className="w-full max-w-5xl  bg-white mt-28 mb-28">
           <div className="flex items-center justify-between p-6 border-b">
             <MdVideoCall className="text-xl" />
             <h2 className="text-lg font-bold">Video Details</h2>
@@ -347,10 +394,10 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
             </Button>
           </div>
 
-          <div className="p-8">
+          <div className="p-8 flex ">
             {renderError(errors.general)}
 
-            <div className="grid grid-cols-3 gap-6">
+            <div className="grid grid-cols-3 gap-6 w-1/2">
               <div className="col-span-2">
                 <div className="space-y-2">
                   <div className="">
@@ -430,7 +477,6 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
                       </div>
                     </RadioGroup>
                   </div>
-
                   <div className="space-y-4">
                     <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                       <div>
@@ -484,55 +530,136 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
                   </div>
                 </div>
               </div>
-
-              <div className="col-span-1">
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <div className="aspect-video bg-gray-200 rounded mb-4">
-                    {selectedFile && (
-                      <video className="w-full h-full object-cover rounded">
-                        <source
-                          src={URL.createObjectURL(selectedFile)}
-                          type={selectedFile.type}
-                        />
-                        Your browser does not support the video tag.
-                      </video>
+            </div>
+            <div className="w-1/2">
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="aspect-video bg-gray-200 rounded mb-4">
+                  {selectedFile && (
+                    <video className="w-full h-full object-cover rounded">
+                      <source
+                        src={URL.createObjectURL(selectedFile)}
+                        type={selectedFile.type}
+                      />
+                      Your browser does not support the video tag.
+                    </video>
+                  )}
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <p className="font-medium text-sm">Filename</p>
+                    <p className="text-sm text-gray-500 truncate">
+                      {selectedFile?.name || "No file selected"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="font-medium text-sm">Size</p>
+                    <p className="text-sm text-gray-500">
+                      {selectedFile
+                        ? `${(selectedFile.size / (1024 * 1024)).toFixed(2)} MB`
+                        : "-"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="font-medium text-sm">Upload Status</p>
+                    {isUploading ? (
+                      <div className="flex items-center space-x-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+                        <span className="text-sm text-blue-500">
+                          Uploading...
+                        </span>
+                      </div>
+                    ) : (
+                      <p className=" font-bold text-sm text-green-500 flex items-center pt-2 gap-1">
+                        <Check className="h-4 w-4" />
+                        Ready to upload
+                      </p>
                     )}
                   </div>
-                  <div className="space-y-4">
-                    <div>
-                      <p className="font-medium text-sm">Filename</p>
-                      <p className="text-sm text-gray-500 truncate">
-                        {selectedFile?.name || "No file selected"}
-                      </p>
+                </div>
+              </div>
+              <div className="">
+                <div
+                  className="border rounded-lg p-4 cursor-pointer "
+                  onClick={() => setIsPlaylistSearchOpen(!isPlaylistSearchOpen)}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <Search size={20} className="text-gray-400 mr-2" />
+                      <input
+                        type="text"
+                        placeholder="Search existing videos..."
+                        className="outline-none"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                      />
                     </div>
-                    <div>
-                      <p className="font-medium text-sm">Size</p>
-                      <p className="text-sm text-gray-500">
-                        {selectedFile
-                          ? `${(selectedFile.size / (1024 * 1024)).toFixed(
-                              2
-                            )} MB`
-                          : "-"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="font-medium text-sm">Upload Status</p>
-                      {isUploading ? (
-                        <div className="flex items-center space-x-2">
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
-                          <span className="text-sm text-blue-500">
-                            Uploading...
-                          </span>
-                        </div>
-                      ) : (
-                        <p className=" font-bold text-sm text-green-500 flex items-center pt-2 gap-1">
-                          <Check className="h-4 w-4" />
-                          Ready to upload
-                        </p>
-                      )}
-                    </div>
+                    <ChevronDown size={20} className="text-gray-400" />
                   </div>
                 </div>
+
+                {/* Search Results Dropdown */}
+                {isPlaylistSearchOpen && (
+                  <div className="absolute z-10 w-1/6 mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {isLoading ? (
+                      <div className="p-4 text-center">
+                        <Loader2 className="animate-spin w-6 h-6 mx-auto text-purple-600" />
+                      </div>
+                    ) : playlist && Array.isArray(playlist) ? (
+                      playlist.map((playlist) => (
+                        <div
+                          key={playlist._id}
+                          className="p-2 hover:bg-gray-50 cursor-pointer flex items-center space-x-3"
+                          onClick={() => handlePlaylistSelection(playlist)}
+                        >
+                          <img
+                            src="/assets/avathar/avathar.png"
+                            alt={playlist.title}
+                            className="w-20 h-12 object-cover rounded"
+                          />
+                          <div>
+                            <div className="font-medium">{playlist.title}</div>
+                            <div className="text-sm text-gray-500">
+                              {playlist.duration}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="p-4 text-center text-gray-500">
+                        No playlist found
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {selectedPlaylist.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-medium">Selected Videos:</h4>
+                    <div className="space-y-2">
+                      {selectedPlaylist.map((playlist) => (
+                        <div
+                          key={playlist._id}
+                          className="flex items-center justify-between bg-gray-50 p-2 rounded"
+                        >
+                          <div className="flex items-center space-x-3">
+                            <img
+                              src={playlist.thumbnailUrl}
+                              className="w-20 h-12 object-cover rounded"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeSelectedPlaylist(playlist._id)}
+                            className="text-red-500 hover:text-red-700"
+                          >
+                            <Trash2 size={20} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

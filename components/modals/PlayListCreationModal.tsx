@@ -464,10 +464,10 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center overflow-y-auto">
-      <div className="bg-white rounded-lg w-full min-h-96 max-w-5xl mx-4 p-5 mt-[20%] mb-[20%] ">
+      <div className="bg-white rounded-lg w-full  max-w-5xl mx-4 p-5">
         <form onSubmit={handleSubmit} className="p-6">
           {/* Header */}
-          <div className="flex justify-between items-center mb-6">
+          <div className="flex justify-between items-center mb-3">
             <MdPlaylistAdd className="text-xl font-bold" />
             <h2 className="text-xl font-semibold">Create new playlist</h2>
             <button
@@ -479,9 +479,9 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
             </button>
           </div>
 
-          <div className="flex gap-5">
+          <div className="flex gap-6 ">
             {/* Form Fields */}
-            <div className="space-y-6">
+            <div className="space-y-2">
               {/* Name Input */}
               <div className="">
                 <label className="block text-sm font-medium mb-2">
@@ -556,7 +556,7 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
               </div>
 
               {/* Category and Visibility */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium mb-2">
                     Category<span className="text-red-500">*</span>
