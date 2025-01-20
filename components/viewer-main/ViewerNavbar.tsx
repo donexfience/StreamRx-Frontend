@@ -3,12 +3,7 @@ import React, { useState } from "react";
 import { FaHome, FaPlay, FaVideo } from "react-icons/fa";
 import { RecommendedStreamers } from "./RecommendedStreamers";
 import { GlowingBorderCard } from "../animations/GlowingBorderCard";
-
-const ViewerNavbar: React.FC<{
-
-}> = ({
-
-}) => {
+const ViewerNavbar: React.FC<{}> = ({}) => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const navItems = [
@@ -22,7 +17,9 @@ const ViewerNavbar: React.FC<{
   };
 
   return (
-    <div className={`w-64 bg-black transition-all duration-500 ease-in-out p-4 dark:bg-white`}>
+    <div
+      className={`w-64 bg-black transition-all duration-500 ease-in-out p-4 dark:bg-white`}
+    >
       <div className="flex flex-col gap-y-4">
         {navItems.map((item) => (
           <div

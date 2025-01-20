@@ -1,42 +1,80 @@
-import { ArrowRight } from "lucide-react";
-import React from "react";
-import { FaStar } from "react-icons/fa";
+"use client";
+import { ArrowRight, ArrowLeft, Clock, Eye, Heart } from "lucide-react";
+import React, { useEffect, useState, useRef } from "react";
 import { StreamerCard } from "./cards/StreamerCard";
-import { CategoryCard } from "./cards/CateogoryCard";
+import { useGetVideoRecommendationQuery } from "@/redux/services/recommendation/recommendationApi";
+import { getUserFromCookies } from "@/app/lib/action/auth";
+import { useRouter } from "next/navigation";
 
-const Popular: React.FC = () => {
-  const categories = [
-    {
-      title: "BGMI",
-      viewers: 706.3,
-      followers: 542.8,
-      image: "/assets/viewermain/streamer1.png",
-    },
-    {
-      title: "Free Fire",
-      viewers: 120.2,
-      followers: 725,
-      image: "/assets/viewermain/streamer1.png",
-    },
-    {
-      title: "GTA 5",
-      viewers: 317.7,
-      followers: 216.5,
-      image: "/assets/viewermain/streamer1.png",
-    },
-    {
-      title: "Valorant",
-      viewers: 75,
-      followers: 18.6,
-      image: "/assets/viewermain/streamer1.png",
-    },
-    {
-      title: "Call of Duty",
-      viewers: 2.7,
-      followers: 31.6,
-      image: "/assets/viewermain/streamer1.png",
-    },
-  ];
+const Popular = () => {
+  const router = useRouter();
+  const [users, setUsers] = useState<any>(null);
+  const videoRowRef = useRef<HTMLDivElement>(null);
+  const [showLeftArrow, setShowLeftArrow] = useState(false);
+  const [showRightArrow, setShowRightArrow] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const decodeUser = await getUserFromCookies();
+        setUsers(decodeUser.user);
+      } catch (error) {
+        console.error("Error fetching user data:", error);
+      }
+    };
+    fetchData();
+  }, []);
+
+  const scrollVideos = (direction: any) => {
+    if (videoRowRef.current) {
+      const scrollAmount = direction === "left" ? -400 : 400;
+      videoRowRef.current.scrollBy({
+        left: scrollAmount,
+        behavior: "smooth",
+      });
+    }
+  };
+
+  const handleScroll = () => {
+    if (videoRowRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = videoRowRef.current;
+      setShowLeftArrow(scrollLeft > 0);
+      setShowRightArrow(scrollLeft < scrollWidth - clientWidth - 10);
+    }
+  };
+
+  useEffect(() => {
+    const videoRow = videoRowRef.current;
+    if (videoRow) {
+      videoRow.addEventListener("scroll", handleScroll);
+      handleScroll(); // Initial check
+      return () => videoRow.removeEventListener("scroll", handleScroll);
+    }
+  }, []);
+
+  const {
+    data: recommendations,
+    isLoading,
+    isError,
+  } = useGetVideoRecommendationQuery(users?.email);
+
+  const formatCount = (count: any) => {
+    if (!count) return "0";
+    if (count >= 1000000) {
+      return `${(count / 1000000).toFixed(1)}M`;
+    }
+    if (count >= 1000) {
+      return `${(count / 1000).toFixed(1)}K`;
+    }
+    return count.toString();
+  };
+
+  const formatDuration = (seconds: any) => {
+    if (!seconds) return "0:00";
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.floor(seconds % 60);
+    return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
+  };
 
   const streams = [
     {
@@ -65,40 +103,134 @@ const Popular: React.FC = () => {
     },
   ];
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-white">Loading...</div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-red-500">Error loading recommendations</div>
+      </div>
+    );
+  }
+
   return (
-    <div className="bg-black dark:bg-white transition-all duration-500 ease-in-out p-6 min-h-screen">
-      {/* Popular Categories */}
+    <div className="bg-black dark:bg-white transition-all duration-500 ease-in-out px-4 min-h-screen">
       <div className="mb-8">
         <div className="flex justify-between items-center mb-4">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center mt-3">
             <span className="text-orange-500 text-2xl">★</span>
-            <h2 className="text-white text-xl font-bold">POPULAR CATEGORIES</h2>
+            <h2 className="text-white dark:text-black text-xl font-bold ml-2">
+              RECOMMENDED VIDEOS
+            </h2>
           </div>
-          <button className="text-gray-400 hover:text-white flex items-center gap-1">
+          <button
+            className="text-gray-400 hover:text-white dark:hover:text-black flex items-center gap-1"
+            onClick={() => router.push("/dashboard/viewer/recommendations")}
+          >
             SEE MORE
             <ArrowRight size={16} />
           </button>
         </div>
-        <div className="flex gap-4 overflow-x-auto pb-4">
-          {categories.map((category, index) => (
-            <CategoryCard
-              key={index}
-              followers={category.followers}
-              image={category.image}
-              title={category.title}
-              viewers={category.viewers}
-            />
-          ))}
+        <div className="relative">
+          {showLeftArrow && (
+            <button
+              onClick={() => scrollVideos("left")}
+              className="absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-black/50 hover:bg-black/80 text-white p-2 rounded-r-lg transition-all"
+            >
+              <ArrowLeft size={24} />
+            </button>
+          )}
+          {showRightArrow && (
+            <button
+              onClick={() => scrollVideos("right")}
+              className="absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-black/50 hover:bg-black/80 text-white p-2 rounded-l-lg transition-all"
+            >
+              <ArrowRight size={24} />
+            </button>
+          )}
+          <div
+            ref={videoRowRef}
+            className="flex gap-4 overflow-x-hidden scroll-smooth p-6"
+          >
+            {recommendations?.data?.map((video: any) => (
+              <div
+                key={video._id}
+                onClick={() =>
+                  router.push(`/dashboard/viewer/main/${video._id}`)
+                }
+                className="flex-none w-64 bg-gray-900 dark:bg-gray-100 rounded-lg overflow-hidden group hover:transform hover:scale-105 transition-all duration-200 cursor-pointer"
+              >
+                <div className="relative">
+                  <img
+                    src={video.thumbnailUrl || "/api/placeholder/320/180"}
+                    alt={video.title}
+                    className="w-full h-36 object-cover"
+                  />
+                  {video.metadata?.duration && (
+                    <div className="absolute bottom-2 right-2 bg-black bg-opacity-80 px-2 py-1 rounded text-white text-xs">
+                      {formatDuration(video.metadata.duration)}
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-3 space-y-2">
+                  <div className="flex items-start space-x-2">
+                    <img
+                      src={
+                        video.channelId?.channelProfileImageUrl ||
+                        "/api/placeholder/32/32"
+                      }
+                      alt={video.channelId?.channelName}
+                      className="w-8 h-8 rounded-full"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-white dark:text-black font-medium text-sm line-clamp-2">
+                        {video.title}
+                      </h3>
+                      <p className="text-gray-400 dark:text-gray-600 text-xs mt-1">
+                        {video.channelId?.channelName}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-4 text-gray-400 dark:text-gray-600 text-xs">
+                    <div className="flex items-center space-x-1">
+                      <Eye size={14} />
+                      <span>{formatCount(video.engagement?.viewCount)}</span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <Heart size={14} />
+                      <span>{formatCount(video.engagement?.likeCount)}</span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <Clock size={14} />
+                      <span>
+                        {new Date(video.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Trending Streams */}
       <div>
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-white text-xl font-bold">
+          <h2 className="text-white dark:text-black text-xl font-bold">
             TRENDING FREE FIRE LIVE STREAMS
           </h2>
-          <button className="text-gray-400 hover:text-white flex items-center gap-1">
+          <button
+            className="text-gray-400 hover:text-white dark:hover:text-black flex items-center gap-1"
+            onClick={() => router.push("/dashboard/viewer/streams")}
+          >
             SEE MORE
             <ArrowRight size={16} />
           </button>

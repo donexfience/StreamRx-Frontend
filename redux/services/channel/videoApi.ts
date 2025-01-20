@@ -2,6 +2,7 @@ import { createApi } from "@reduxjs/toolkit/query/react";
 import { baseQueryWithTokenHandling } from "./channelBaseQuery";
 import {
   AllVideoUploadResponse,
+  VideoData,
   VideoUploadRequest,
   VideoUploadResponse,
 } from "./channel";
@@ -39,11 +40,24 @@ export const httpVideoApi = createApi({
     }),
     getVideoByQuery: builder.query<AllVideoUploadResponse, { query: any }>({
       query: ({ query }) => {
-        console.log("Query parameter in RTK Query:", query,encodeURIComponent(query)); 
+        console.log(
+          "Query parameter in RTK Query:",
+          query,
+          encodeURIComponent(query)
+        );
         return {
           url: `/videoes/video`,
           method: "GET",
           params: { query: encodeURIComponent(query) },
+        };
+      },
+    }),
+    getVideoById: builder.query<VideoData, { id: any }>({
+      query: ({ id }) => {
+        console.log("Query parameter in RTK Query:", id);
+        return {
+          url: `/videoes/${id}`,
+          method: "GET",
         };
       },
     }),
@@ -54,4 +68,5 @@ export const {
   useUploadVideoMutation,
   useGetAllVideosQuery,
   useGetVideoByQueryQuery,
+  useGetVideoByIdQuery,
 } = httpVideoApi;

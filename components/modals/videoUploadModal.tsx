@@ -27,6 +27,7 @@ import {
 import { uploadToS3 } from "@/app/lib/action/s3";
 import toast from "react-hot-toast";
 import { useGetPlaylistByQueryQuery } from "@/redux/services/channel/plalylistApi";
+import { uploadToCloudinary } from "@/app/lib/action/user";
 
 // Types
 interface VideoFormData {
@@ -36,6 +37,9 @@ interface VideoFormData {
   subtitles: boolean;
   endScreen: boolean;
   cards: boolean;
+  tags: string[];
+  category: string;
+  ThumbnailFile?: File | null;
 }
 
 interface ValidationErrors {
@@ -43,6 +47,9 @@ interface ValidationErrors {
   description?: string;
   file?: string;
   general?: string;
+  category?: string;
+  tags?: string;
+  ThumbnailFile?: string;
 }
 
 interface Playlist {
@@ -52,7 +59,7 @@ interface Playlist {
   visibility: "public" | "private" | "unlisted";
   category: string;
   tags: string[];
-  thumbnailUrl: string;
+  thumbnailUrl: string | null;
 }
 
 interface VideoUploadProps {
@@ -119,28 +126,38 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [isPlaylistSearchOpen, setIsPlaylistSearchOpen] = useState(false);
   const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist[]>([]);
+  const [customCategory, setCustomCategory] = useState("");
+  const [categories] = useState([
+    "Technology",
+    "Health",
+    "Education",
+    "Finance",
+  ]);
+  const [selectedCategory, setSelectedCategory] = useState("");
 
   const [formData, setFormData] = useState<VideoFormData>({
     title: "",
     description: "",
     visibility: "private",
+    tags: [],
     subtitles: false,
     endScreen: false,
+    ThumbnailFile: null as File | null,
     cards: false,
+    category: "",
   });
 
-  const {
-    data: playlist,
-    isLoading,
-    error,
-  } = useGetPlaylistByQueryQuery(
+  const { data: playlist, isLoading } = useGetPlaylistByQueryQuery(
     { query: searchQuery ? { title: searchQuery } : {} },
     { skip: !searchQuery }
   );
 
-  console.log(playlist, "plalylist  ");
   const validateFile = (file: File): string | null => {
     const allowedTypes = ["video/mp4", "video/quicktime", "video/x-msvideo"];
+
+    if (!file) {
+      return "Please select a video file";
+    }
 
     if (!allowedTypes.includes(file.type)) {
       return "Please select a valid video file (MP4, MOV, or AVI)";
@@ -153,28 +170,59 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
     return null;
   };
 
-  const validateForm = (): ValidationErrors => {
-    const errors: ValidationErrors = {};
+  const validateForm = (): boolean => {
+    const newErrors: ValidationErrors = {};
 
-    if (!formData.title.trim()) {
-      errors.title = "Title is required";
+    // Title validation
+    if (!formData.title?.trim()) {
+      newErrors.title = "Title is required";
     } else if (formData.title.length > 100) {
-      errors.title = "Title must be less than 100 characters";
+      newErrors.title = "Title must be less than 100 characters";
     }
 
+    // Description validation
     if (formData.description.length > 5000) {
-      errors.description = "Description must be less than 5000 characters";
+      newErrors.description = "Description must be less than 5000 characters";
     }
 
+    // Category validation
+    if (!formData.category && selectedCategory !== "other") {
+      newErrors.category = "Category is required";
+    }
+
+    // Tags validation
+    if (!formData.tags || formData.tags.length === 0) {
+      newErrors.tags = "At least one tag is required";
+    } else if (formData.tags.length > 10) {
+      newErrors.tags = "Maximum 10 tags allowed";
+    }
+
+    // File validation
     if (!selectedFile) {
-      errors.file = "Please select a video file";
+      newErrors.file = "Please select a video file";
+    } else {
+      const fileError = validateFile(selectedFile);
+      if (fileError) {
+        newErrors.file = fileError;
+      }
     }
 
-    return errors;
+    setErrors(newErrors);
+    console.log(errors, "errors of form video upload");
+    return Object.keys(newErrors).length === 0;
   };
 
   const handleFileClick = () => {
     fileInputRef.current?.click();
+  };
+
+  const uploadThumbnail = async (file: File): Promise<string> => {
+    const formData = new FormData();
+    formData.append("thumbnail", file);
+
+    const imageurl = await uploadToCloudinary(file);
+
+    return imageurl;
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -201,17 +249,15 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
     }));
     setCurrentModal("details");
   };
+
   const [uploadVideo] = useUploadVideoMutation();
 
   const removeSelectedPlaylist = (playListId: string) => {
     setSelectedPlaylist((prev) => prev.filter((v) => v._id !== playListId));
   };
 
-  console.log(selectedPlaylist, "selectedPlaylist");
   const handleSubmit = async () => {
-    const validationErrors = validateForm();
-    if (Object.keys(validationErrors).length > 0) {
-      setErrors(validationErrors);
+    if (!validateForm()) {
       return;
     }
 
@@ -220,30 +266,33 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
     setErrors({});
 
     try {
+      let thumbnailUrl = "";
+      if (formData.ThumbnailFile) {
+        thumbnailUrl = await uploadThumbnail(formData.ThumbnailFile);
+      }
       if (!selectedFile || !channelId) {
         throw new Error("No file selected or channel ID missing");
       }
-      //first convert it in to buffer
+
       setUploadProgress(10);
       const buffer = await selectedFile.arrayBuffer();
       const base64Video = Buffer.from(buffer).toString("base64");
       const videoId = Date.now().toString();
-      setUploadProgress(10);
-      // Pass base64 string to the server function
+
       const { outputPath, metadata } = await processVideo(base64Video, videoId);
-      console.log(outputPath, metadata, "data got 2624");
       setUploadProgress(50);
+
       const processedVideoBuffer = await readAndProcessVideo(outputPath);
-      console.log(processedVideoBuffer, "hello got buffer");
       const s3Key = `videos/${channelId}/${videoId}/processed.mp4`;
       setUploadProgress(70);
+
       const fileUrl = await uploadToS3(
         processedVideoBuffer,
         s3Key,
         "video/mp4"
       );
-      console.log(fileUrl, "file url from the s3");
       setUploadProgress(80);
+
       const videoData = {
         channelId,
         title: formData.title,
@@ -251,6 +300,7 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
         visibility: formData.visibility,
         fileUrl,
         s3Key,
+        thumbnailUrl,
         status: "processing",
         processingProgress: 0,
         metadata: {
@@ -265,33 +315,48 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
           bitrate: "1500k",
           size: processedVideoBuffer.length,
         },
+        tags: formData.tags,
+        category: formData.category,
         videourl: fileUrl,
         selectedPlaylist: selectedPlaylist.map((playlist) => playlist._id),
       };
+
       setUploadProgress(90);
-      console.log(videoData, "video data");
       const uploadedVideo = await uploadVideo({
         ...videoData,
         subtitles: formData.subtitles,
         endScreen: formData.endScreen,
         cards: formData.cards,
       }).unwrap();
+
       await cleanup([outputPath]);
       setUploadProgress(100);
-      console.log(uploadedVideo, "response come");
-
       onSuccess(videoData);
-      toast.success("video upload successfully");
+      toast.success("Video uploaded successfully");
       refetch();
       onClose();
     } catch (error: any) {
-      console.log(error, "errror of video");
       setErrors({
         general:
           error.data?.message || "Failed to upload video. Please try again.",
       });
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  const handleTagInput = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && e.currentTarget.value.trim()) {
+      e.preventDefault();
+      const newTag = e.currentTarget.value.trim();
+      if (!formData.tags.includes(newTag)) {
+        setFormData((prev) => ({
+          ...prev,
+          tags: [...prev.tags, newTag],
+        }));
+        setErrors((prev) => ({ ...prev, tags: undefined }));
+      }
+      e.currentTarget.value = "";
     }
   };
 
@@ -303,6 +368,13 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
     setSearchQuery("");
   };
 
+  const removeTag = (tagToRemove: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      tags: prev.tags.filter((tag) => tag !== tagToRemove),
+    }));
+  };
+
   const renderError = (error: string | undefined) => {
     if (!error) return null;
     return (
@@ -311,6 +383,47 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
         <AlertDescription>{error}</AlertDescription>
       </Alert>
     );
+  };
+
+  const handleCustomCategoryChange = (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    setCustomCategory(event.target.value);
+  };
+
+  const addCustomCategory = () => {
+    if (customCategory.trim()) {
+      setFormData((prev) => ({ ...prev, category: customCategory.trim() }));
+      setSelectedCategory(customCategory.trim());
+      setCustomCategory("");
+      setErrors((prev) => ({ ...prev, category: undefined }));
+    }
+  };
+
+  const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value;
+    setSelectedCategory(value);
+    if (value !== "other") {
+      setFormData((prev) => ({ ...prev, category: value }));
+      setCustomCategory("");
+      setErrors((prev) => ({ ...prev, category: undefined }));
+    }
+  };
+  const maxThumbnailSize = 10 * 1024 * 1024; // 10MB
+  const handleThumbnailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > maxThumbnailSize) {
+      setErrors((prev) => ({
+        ...prev,
+        ThumbnailFile: "Thumbnail must be less than 10MB",
+      }));
+      return;
+    }
+
+    setFormData((prev) => ({ ...prev, ThumbnailFile: file }));
+    setErrors((prev) => ({ ...prev, ThumbnailFile: undefined }));
   };
 
   // Floating Icons Component
@@ -333,7 +446,7 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
   );
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-6 ">
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center overflow-y-scroll">
       {currentModal === "upload" ? (
         <div className="bg-white rounded-lg w-full max-w-2xl">
           <div className="p-4 border-b">
@@ -380,7 +493,7 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
           </div>
         </div>
       ) : (
-        <Card className="w-full max-w-5xl  bg-white mt-28 mb-28">
+        <Card className="w-full max-w-5xl  bg-white mt-80 mb-28">
           <div className="flex items-center justify-between p-6 border-b">
             <MdVideoCall className="text-xl" />
             <h2 className="text-lg font-bold">Video Details</h2>
@@ -406,12 +519,13 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
                     </label>
                     <Input
                       value={formData.title}
-                      onChange={(e) =>
+                      onChange={(e) => {
                         setFormData((prev) => ({
                           ...prev,
                           title: e.target.value,
-                        }))
-                      }
+                        }));
+                        setErrors((prev) => ({ ...prev, title: undefined }));
+                      }}
                       className="w-full"
                     />
                     {renderError(errors.title)}
@@ -575,6 +689,58 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
                       </p>
                     )}
                   </div>
+                  <h2 className="font-medium">
+                    add thumbnail<span className="text-red-500">*</span>
+                  </h2>
+                  <div className="border-2 border-dashed rounded-lg p-6 ">
+                    <div className="text-center">
+                      <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                        <svg
+                          className="w-6 h-6 text-purple-600"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                          />
+                        </svg>
+                      </div>
+                      <div className="text-sm text-gray-600 mb-4">
+                        Upload thumbnail
+                        <br />
+                        <span className="text-xs text-gray-500">
+                          Maximum file size: 10 MB
+                        </span>
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        id="thumbnail-upload"
+                        onChange={handleThumbnailChange}
+                      />
+                      <label
+                        htmlFor="thumbnail-upload"
+                        className="px-4 py-2 bg-purple-600 text-white rounded-lg cursor-pointer hover:bg-purple-700"
+                      >
+                        Choose file
+                      </label>
+                      {errors.ThumbnailFile && (
+                        <p className="mt-2 text-sm text-red-500">
+                          {errors.ThumbnailFile}
+                        </p>
+                      )}
+                      {formData.ThumbnailFile && (
+                        <div className="mt-2 text-sm text-gray-600">
+                          Selected: {formData.ThumbnailFile.name}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
               <div className="">
@@ -644,7 +810,11 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
                         >
                           <div className="flex items-center space-x-3">
                             <img
-                              src={playlist.thumbnailUrl}
+                              src={`${
+                                playlist?.thumbnailUrl
+                                  ? `${playlist?.thumbnailUrl}`
+                                  : ""
+                              }`}
                               className="w-20 h-12 object-cover rounded"
                             />
                           </div>
@@ -660,6 +830,87 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
                     </div>
                   </div>
                 )}
+                <div>
+                  <label className="block text-sm font-medium mb-2">Tags</label>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {formData.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className={`bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-sm flex items-center`}
+                      >
+                        {tag}
+                        <button
+                          type="button"
+                          onClick={() => removeTag(tag)}
+                          className="ml-1 text-purple-600 hover:text-purple-800"
+                        >
+                          <X size={14} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    placeholder="Type a tag and press Enter"
+                    onKeyDown={handleTagInput}
+                  />
+                  {errors.tags && (
+                    <p className="mt-1 text-sm text-red-500">{errors.tags}</p>
+                  )}
+                </div>
+
+                {/* Category and Visibility */}
+                <div className="grid grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      Category<span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      name="category"
+                      value={selectedCategory}
+                      onChange={handleCategoryChange}
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent ${
+                        errors.category ? "border-red-500" : ""
+                      }`}
+                    >
+                      <option value="" disabled>
+                        -- Select a Category --
+                      </option>
+                      {categories.map((category) => (
+                        <option key={category} value={category}>
+                          {category}
+                        </option>
+                      ))}
+                      <option value="other">Other</option>
+                    </select>
+                    {errors.category && (
+                      <p className="mt-1 text-sm text-red-500">
+                        {errors.category}
+                      </p>
+                    )}
+
+                    {selectedCategory === "other" && (
+                      <div className="mt-2">
+                        <input
+                          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                          type="text"
+                          placeholder="Enter custom category"
+                          value={customCategory}
+                          onChange={handleCustomCategoryChange}
+                        />
+                        <button
+                          type="button"
+                          className="mt-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-purple-400"
+                          onClick={addCustomCategory}
+                          disabled={!customCategory.trim()}
+                        >
+                          Add Category
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -688,7 +939,7 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
               </Button>
               <Button
                 onClick={handleSubmit}
-                disabled={isUploading || Object.keys(errors).length > 0}
+                disabled={isUploading}
                 className="min-w-[100px]"
               >
                 {isUploading ? (
@@ -709,5 +960,4 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
     </div>
   );
 };
-
 export default VideoUploadFlow;

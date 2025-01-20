@@ -1,4 +1,3 @@
-
 export interface SocialLinks {
   twitter?: string;
   instagram?: string;
@@ -83,7 +82,9 @@ export interface VideoUploadRequest {
   cards?: boolean;
   videourl: string;
   selectedPlaylist: string[];
-
+  category: string;
+  tags: string[];
+  thumbnailUrl: string;
 }
 
 export interface VideoMetadata {
@@ -118,6 +119,53 @@ export interface VideoUploadResponse {
   createdAt: string;
   updatedAt: string;
 }
+
+
+
+export interface VideoMetadata {
+  originalFileName: string;
+  mimeType: string;
+  codec?: string;
+  fps?: number;
+  duration?: number;
+}
+
+export interface VideoEngagement {
+  viewCount: number;
+  likeCount: number;
+  dislikeCount: number;
+  commentCount: number;
+  averageWatchDuration: number;
+}
+
+export interface VideoQuality {
+  resolution: string;
+  bitrate: string;
+  size: number;
+}
+
+export interface VideoData {
+  _id: string;
+  channelId: string;
+  category: string;
+  createdAt: string;
+  updatedAt: string;
+  description: string;
+  fileUrl: string;
+  metadata: VideoMetadata;
+  processingProgress: number;
+  quality: VideoQuality;
+  s3Key: string;
+  selectedPlaylist: string[];
+  status: string;
+  tags: string[];
+  thumbnailUrl: string;
+  title: string;
+  visibility: string;
+  __v: number;
+  engagement: VideoEngagement;
+}
+
 
 export interface VideoItem {
   _id?: string;
@@ -157,9 +205,12 @@ export interface PlaylistRequest {
   category: string;
   tags: string[];
   thumbnailUrl: string;
-  selectedVideos: string[];
-  videoUrls: string[];
-  
+  status: string;
+  videos: {
+    videoId: string;
+    next: string | null;
+    prev: string | null;
+  }[];
 }
 
 export interface PlaylistResponse {
@@ -170,8 +221,12 @@ export interface PlaylistResponse {
   category: string;
   tags: string[];
   thumbnailUrl: string;
-  selectedVideos: string[];
-  videoUrls: string[];
+  status: string;
+  videos: {
+    videoId: string;
+    next: string | null;
+    prev: string | null;
+  }[];
   createdAt: string;
   updatedAt: string;
 }

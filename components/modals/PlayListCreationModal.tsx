@@ -40,6 +40,13 @@ interface ValidationErrors {
   general?: string;
 }
 
+interface VideoNode {
+  videoId: string;
+  videoUrl: string;
+  next: string | null;
+  prev: string | null;
+}
+
 interface UploadProgress {
   progress: number;
   status: "pending" | "processing" | "uploading" | "complete" | "error";
@@ -106,6 +113,7 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
     "Finance",
   ]);
   const [selectedCategory, setSelectedCategory] = useState("");
+  const [orderedVideos, setOrderedVideos] = useState<VideoNode[]>([]);
 
   // Get channel data
   const { data: channelData, isError: channelError } =
@@ -169,6 +177,10 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
           bitrate: "1500k",
           size: processedVideoBuffer.length,
         },
+        thumbnailUrl: formData.thumbnailUrl,
+        tags: formData.tags,
+        category: formData.category,
+        selectedPlaylist: [],
         videourl: fileUrl,
       };
 
@@ -307,9 +319,30 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
     setVideoUploads((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const addVideoToList = (videoId: string, videoUrl: string) => {
+    const newNode: VideoNode = {
+      videoId,
+      videoUrl,
+      next: null,
+      prev: null,
+    };
+    setOrderedVideos((prev) => {
+      if (prev.length === 0) {
+        return [newNode];
+      }
+
+      const lastNode = prev[prev.length - 1];
+      const updatedLastNode = { ...lastNode, next: videoId };
+      newNode.prev = lastNode.videoId;
+
+      return [...prev.slice(0, -1), updatedLastNode, newNode];
+    });
+  };
+
   const handleVideoSelection = (video: Video) => {
     if (!selectedVideos.find((v) => v._id === video._id)) {
       setSelectedVideos((prev) => [...prev, video]);
+      addVideoToList(video._id, video.thumbnailUrl);
     }
     setIsVideoSearchOpen(false);
     setSearchQuery("");
@@ -317,6 +350,23 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
 
   const removeSelectedVideo = (videoId: string) => {
     setSelectedVideos((prev) => prev.filter((v) => v._id !== videoId));
+
+    setOrderedVideos((prev) => {
+      const index = prev.findIndex((node) => node.videoId === videoId);
+      if (index === -1) return prev;
+
+      const newList = [...prev];
+
+      // Update connections for adjacent nodes
+      if (index > 0) {
+        newList[index - 1].next = newList[index].next;
+      }
+      if (index < newList.length - 1) {
+        newList[index + 1].prev = newList[index].prev;
+      }
+
+      return newList.filter((node) => node.videoId !== videoId);
+    });
   };
 
   const validateFile = (file: File): string | null => {
@@ -409,6 +459,11 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
 
             videoUrls.push(result.videoUrl);
             videoIds.push(result.videoId);
+            if (!result.videoId || !result.videoUrl) {
+              return;
+            }
+            addVideoToList(result.videoId, result.videoUrl);
+
             updateUploadProgress(i, {
               progress: 100,
               status: "complete",
@@ -438,9 +493,15 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
         category: formData.category,
         tags: formData.tags,
         thumbnailUrl,
-        videoUrls,
-        videoIds,
-        selectedVideos: selectedVideos.map((video) => video._id),
+        videos: orderedVideos.map((node, index) => ({
+          videoId: node.videoId,
+          videoUrl: node.videoUrl,
+          next:
+            index < orderedVideos.length - 1
+              ? orderedVideos[index + 1].videoId
+              : null,
+          prev: index > 0 ? orderedVideos[index - 1].videoId : null,
+        })),
         status: "active",
       };
       console.log("final", finalFormData);
@@ -464,7 +525,7 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center overflow-y-auto">
-      <div className="bg-white rounded-lg w-full  max-w-5xl mx-4 p-5">
+      <div className="bg-white rounded-lg w-full max-w-5xl mx-4 p-5">
         <form onSubmit={handleSubmit} className="p-6">
           {/* Header */}
           <div className="flex justify-between items-center mb-3">

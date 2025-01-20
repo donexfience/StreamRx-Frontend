@@ -15,7 +15,7 @@ export default function ViewerLayout({
     <div className={`h-screen flex flex-col`}>
       <ViewerHead  />
       <div className="flex flex-1">
-        <ViewerNavbar  />
+        
         {children}
       </div>
     </div>

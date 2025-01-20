@@ -5,13 +5,16 @@ import ViewerNavbar from "@/components/viewer-main/ViewerNavbar";
 import { ThemeProvider } from "next-themes";
 import React from "react";
 
-
 const page: React.FC = () => {
   return (
-    <div className="">
-
+    <div className="bg-black">
+      <div className="w-full flex ">
+        <ViewerNavbar />
         <MainContent />
+      </div>
+      <div className="ml-60">
         <Popular />
+      </div>
     </div>
   );
 };

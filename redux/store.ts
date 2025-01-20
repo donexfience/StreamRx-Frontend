@@ -7,6 +7,7 @@ import { httpUserApi } from "./services/user/userApi";
 import { httpChannelApi } from "./services/channel/channelApi";
 import { httpVideoApi } from "./services/channel/videoApi";
 import { httpPlaylistApi } from "./services/channel/plalylistApi";
+import { httpRecommendationApi } from "./services/recommendation/recommendationApi";
 
 // const persistConfig = {
 //   key: 'root',
@@ -23,6 +24,7 @@ export const store = configureStore({
     [httpChannelApi.reducerPath]: httpChannelApi.reducer,
     [httpVideoApi.reducerPath]: httpVideoApi.reducer,
     [httpPlaylistApi.reducerPath]: httpPlaylistApi.reducer,
+    [httpRecommendationApi.reducerPath]: httpRecommendationApi.reducer,
     auth: authReducer,
   },
   middleware: (getDefaultMiddleware) =>
@@ -31,7 +33,8 @@ export const store = configureStore({
       .concat(httpUserApi.middleware)
       .concat(httpChannelApi.middleware)
       .concat(httpVideoApi.middleware)
-      .concat(httpPlaylistApi.middleware),
+      .concat(httpPlaylistApi.middleware)
+      .concat(httpRecommendationApi.middleware),
 });
 export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;
