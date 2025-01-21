@@ -2,6 +2,10 @@ import { createApi } from "@reduxjs/toolkit/query/react";
 import { baseQueryWithTokenHandling } from "./channelBaseQuery";
 import {
   AllVideoUploadResponse,
+  Comment,
+  CommentResponse,
+  CreateCommentRequest,
+  UpdateCommentRequest,
   VideoData,
   VideoUploadRequest,
   VideoUploadResponse,
@@ -61,11 +65,63 @@ export const httpVideoApi = createApi({
         };
       },
     }),
+    createComment: builder.mutation<Comment, CreateCommentRequest>({
+      query: ({ videoId, text, parentId, userId }) => ({
+        url: `comments/video/${videoId}`,
+        method: "POST",
+        body: { text, parentId, userId },
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }),
+    }),
+
+    getVideoComments: builder.query<Comment[], { videoId: string }>({
+      query: ({ videoId }) => ({
+        url: `comments/comment/${videoId}`,
+        method: "GET",
+      }),
+      transformResponse: (response: CommentResponse) => response.data,
+    }),
+
+    getReplies: builder.query<Comment[], { commentId: string }>({
+      query: ({ commentId }) => {
+        console.log("comment id got for replay", commentId);
+        return {
+          url: `comments/replies/${commentId}`,
+          method: "GET",
+        };
+      },
+      transformResponse: (response: CommentResponse) => response.data,
+    }),
+
+    updateComment: builder.mutation<Comment, UpdateCommentRequest>({
+      query: ({ commentId, text }) => ({
+        url: `comments/${commentId}`,
+        method: "PUT",
+        body: { text },
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }),
+    }),
+
+    deleteComment: builder.mutation<void, { commentId: string }>({
+      query: ({ commentId }) => ({
+        url: `comments/${commentId}`,
+        method: "DELETE",
+      }),
+    }),
   }),
 });
 
 export const {
   useUploadVideoMutation,
+  useCreateCommentMutation,
+  useDeleteCommentMutation,
+  useGetRepliesQuery,
+  useGetVideoCommentsQuery,
+  useUpdateCommentMutation,
   useGetAllVideosQuery,
   useGetVideoByQueryQuery,
   useGetVideoByIdQuery,

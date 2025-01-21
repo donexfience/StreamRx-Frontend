@@ -120,8 +120,6 @@ export interface VideoUploadResponse {
   updatedAt: string;
 }
 
-
-
 export interface VideoMetadata {
   originalFileName: string;
   mimeType: string;
@@ -166,6 +164,42 @@ export interface VideoData {
   engagement: VideoEngagement;
 }
 
+export interface Comment {
+  data: {
+    _id: string;
+    videoId: string;
+    channelId: string;
+    userId: string;
+    text: string;
+    parentCommentId?: string;
+    replies?: Comment[];
+    likes: number;
+    dislikes: number;
+    createdAt: string;
+    updatedAt: string;
+  };
+}
+
+export interface CommentResponse {
+  success: boolean;
+  data: Comment[];
+  pagination: {
+    page: number;
+    limit: number;
+  };
+}
+
+export interface CreateCommentRequest {
+  videoId: string;
+  text: string;
+  parentId?: string;
+  userId: string;
+}
+
+export interface UpdateCommentRequest {
+  commentId: string;
+  text: string;
+}
 
 export interface VideoItem {
   _id?: string;

@@ -19,24 +19,37 @@ import {
   Subtitles,
   ChevronDown,
   ChevronRight,
+  Trash2,
+  Edit,
 } from "lucide-react";
 import { useParams } from "next/navigation";
-import { useGetVideoByIdQuery } from "@/redux/services/channel/videoApi";
+import {
+  useCreateCommentMutation,
+  useDeleteCommentMutation,
+  useGetRepliesQuery,
+  useGetVideoByIdQuery,
+  useGetVideoCommentsQuery,
+  useUpdateCommentMutation,
+} from "@/redux/services/channel/videoApi";
 import { getPresignedUrl } from "@/app/lib/action/s3";
 import { useGetUserQuery } from "@/redux/services/user/userApi";
 import { getUserFromCookies } from "@/app/lib/action/auth";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { timeAgo } from "@/lib/utils";
 
 interface Comment {
-  id: string;
+  _id: string;
   text: string;
-  user: {
-    name: string;
-    avatar: string;
+  userId: {
+    email: string;
+    username: string;
+    profileImageURL: string;
+    _id: string;
   };
   likes: number;
+  createdAt: string;
   timestamp: string;
-  replies?: Comment[];
-  showReplies?: boolean;
+  parentCommentId?: string;
 }
 
 const ReplyInput = React.memo(
@@ -45,14 +58,39 @@ const ReplyInput = React.memo(
     onCancel,
     initialValue = "",
     autoFocus = false,
+    isEditing = false,
   }: {
     onSubmit: (text: string) => void;
     onCancel: () => void;
     initialValue?: string;
     autoFocus?: boolean;
+    isEditing?: boolean;
   }) => {
     const [text, setText] = useState(initialValue);
     const inputRef = useRef<HTMLInputElement>(null);
+    const [sessionUser, setSessionUser] = useState<any>(null);
+    const [isLoadingSession, setIsLoadingSession] = useState(true);
+
+    useEffect(() => {
+      const fetchSessionUser = async () => {
+        try {
+          const user = await getUserFromCookies();
+          setSessionUser(user?.user);
+        } catch (error) {
+          console.error("Error fetching session:", error);
+        } finally {
+          setIsLoadingSession(false);
+        }
+      };
+      fetchSessionUser();
+    }, []);
+
+    const { data: userData } = useGetUserQuery(
+      { email: sessionUser?.email },
+      {
+        skip: isLoadingSession || !sessionUser?.email,
+      }
+    );
 
     useEffect(() => {
       if (autoFocus && inputRef.current) {
@@ -63,7 +101,7 @@ const ReplyInput = React.memo(
     return (
       <div className="flex gap-4 mt-4">
         <img
-          src="/api/placeholder/32/32"
+          src={userData?.user.profileImageURL ?? "/api/placeholder/32/32"}
           alt="Current user"
           className="w-8 h-8 rounded-full"
         />
@@ -71,7 +109,9 @@ const ReplyInput = React.memo(
           <input
             ref={inputRef}
             type="text"
-            placeholder="Add a reply..."
+            placeholder={
+              isEditing ? "Edit your comment..." : "Add a comment..."
+            }
             className="w-full bg-transparent text-white border-b border-gray-700 focus:border-blue-500 outline-none pb-2"
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -93,7 +133,7 @@ const ReplyInput = React.memo(
               className="px-4 py-2 bg-blue-500 text-white rounded-full hover:bg-blue-600"
               disabled={!text.trim()}
             >
-              Reply
+              {isEditing ? "Save" : "Comment"}
             </button>
           </div>
         </div>
@@ -107,79 +147,196 @@ ReplyInput.displayName = "ReplyInput";
 const SingleComment = React.memo(
   ({
     comment,
-    onAddReply,
-    onToggleReplies,
+    videoId,
+    currentUserId,
+    onCommentUpdate,
   }: {
     comment: Comment;
-    onAddReply: (text: string, parentId: string) => void;
-    onToggleReplies: (commentId: string) => void;
+    videoId: string;
+    currentUserId: string;
+    onCommentUpdate: () => void;
   }) => {
+    const [createComment] = useCreateCommentMutation();
+    const [updateComment] = useUpdateCommentMutation();
+    const [deleteComment] = useDeleteCommentMutation();
+    console.log(comment, "in the singleComponent", comment._id);
     const [isReplying, setIsReplying] = useState(false);
-    const hasReplies = comment.replies && comment.replies.length > 0;
+    const [isEditing, setIsEditing] = useState(false);
+    const [showReplies, setShowReplies] = useState(true);
 
+    const { data: replies = [], refetch: refetchReplies } = useGetRepliesQuery(
+      { commentId: comment?._id },
+      { skip: !showReplies }
+    );
+    console.log(replies, "replies in the single commponent");
+    const [sessionUser, setSessionUser] = useState<any>(null);
+    const [isLoadingSession, setIsLoadingSession] = useState(true);
+    useEffect(() => {
+      const fetchSessionUser = async () => {
+        try {
+          const user = await getUserFromCookies();
+          setSessionUser(user?.user);
+        } catch (error) {
+          console.error("Error fetching session:", error);
+        } finally {
+          setIsLoadingSession(false);
+        }
+      };
+      fetchSessionUser();
+    }, []);
+
+    const { data: userData } = useGetUserQuery(
+      { email: sessionUser?.email },
+      {
+        skip: isLoadingSession || !sessionUser?.email,
+      }
+    );
+    const handleReply = async (text: string) => {
+      try {
+        console.log("something got for hadleREplay");
+        if (userData?.user?._id && videoId) {
+          console.log("user data", "dd", comment._id, userData?.user?._id);
+          await createComment({
+            videoId,
+            text,
+            parentId: comment._id,
+            userId: userData?.user?._id,
+          }).unwrap();
+        }
+
+        setIsReplying(false);
+        if (showReplies) {
+          refetchReplies();
+        } else {
+          setShowReplies(true);
+        }
+        onCommentUpdate();
+      } catch (error) {
+        console.error("Failed to create reply:", error);
+      }
+    };
+
+    const handleEdit = async (text: string) => {
+      try {
+        console.log(comment._id, "deleting comment id");
+        await updateComment({
+          commentId: comment._id,
+          text,
+        }).unwrap();
+        setIsEditing(false);
+        onCommentUpdate();
+      } catch (error) {
+        console.error("Failed to update comment:", error);
+      }
+    };
+
+    const handleDelete = async () => {
+      try {
+        const response = await deleteComment({
+          commentId: comment._id,
+        }).unwrap();
+        console.log(response, "response after delete");
+        refetchReplies();
+        onCommentUpdate();
+      } catch (error) {
+        console.error("Failed to delete comment:", error);
+      }
+    };
+    const userName = comment.userId?.username || "Anonymous";
+    const userAvatar =
+      comment.userId?.profileImageURL || "/api/placeholder/32/32";
+    const userId = comment.userId?._id || "";
     return (
       <div className="flex gap-4 mt-4">
-        <img
-          src={comment.user.avatar}
-          alt={comment.user.name}
-          className="w-8 h-8 rounded-full"
-        />
+        <img src={userAvatar} alt={userName} className="w-8 h-8 rounded-full" />
         <div className="flex-1 text-white">
           <div className="flex items-center gap-2">
-            <span className="font-medium">{comment.user.name}</span>
-            <span className="text-gray-400 text-sm">{comment.timestamp}</span>
+            <span className="font-medium">{userName}</span>
+            <span className="text-gray-400 text-sm">
+              {timeAgo(comment.createdAt)}
+            </span>
           </div>
-          <p className="mt-1">{comment.text}</p>
-          <div className="flex items-center gap-4 mt-2">
-            <button className="flex items-center gap-1 hover:bg-gray-800 p-2 rounded-full">
-              <ThumbsUp size={16} />
-              {comment.likes}
-            </button>
-            <button className="flex items-center gap-1 hover:bg-gray-800 p-2 rounded-full">
-              <ThumbsDown size={16} />
-            </button>
-            <button
-              onClick={() => setIsReplying(!isReplying)}
-              className="text-gray-400 hover:text-white hover:bg-gray-800 p-2 rounded-full"
-            >
-              Reply
-            </button>
-            {hasReplies && (
-              <button
-                onClick={() => onToggleReplies(comment.id)}
-                className="flex items-center gap-1 text-gray-400 hover:text-white"
-              >
-                {comment.showReplies ? (
-                  <ChevronDown size={16} />
-                ) : (
-                  <ChevronRight size={16} />
+
+          {isEditing ? (
+            <ReplyInput
+              onSubmit={handleEdit}
+              onCancel={() => setIsEditing(false)}
+              initialValue={comment.text}
+              autoFocus
+              isEditing
+            />
+          ) : (
+            <>
+              <p className="mt-1">{comment.text}</p>
+              <div className="flex items-center gap-4 mt-2">
+                <button className="flex items-center gap-1 hover:bg-gray-800 p-2 rounded-full">
+                  <ThumbsUp size={16} />
+                  {comment.likes}
+                </button>
+                <button className="flex items-center gap-1 hover:bg-gray-800 p-2 rounded-full">
+                  <ThumbsDown size={16} />
+                </button>
+                <button
+                  onClick={() => setIsReplying(!isReplying)}
+                  className="text-gray-400 hover:text-white hover:bg-gray-800 p-2 rounded-full"
+                >
+                  Reply
+                </button>
+                {comment?.userId?._id === currentUserId && (
+                  <>
+                    <button
+                      onClick={() => setIsEditing(true)}
+                      className="text-gray-400 hover:text-white hover:bg-gray-800 p-2 rounded-full"
+                    >
+                      <Edit size={16} />
+                    </button>
+                    <button
+                      onClick={handleDelete}
+                      className="text-gray-400 hover:text-white hover:bg-gray-800 p-2 rounded-full"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </>
                 )}
-                {comment.replies!.length} replies
-              </button>
-            )}
-          </div>
+              </div>
+            </>
+          )}
 
           {isReplying && (
             <ReplyInput
-              onSubmit={(text) => {
-                onAddReply(text, comment.id);
-                setIsReplying(false);
-              }}
+              onSubmit={handleReply}
               onCancel={() => setIsReplying(false)}
               autoFocus
             />
           )}
 
-          {hasReplies && comment.showReplies && (
+          {replies.length > 0 && (
+            <button
+              onClick={() => setShowReplies(!showReplies)}
+              className="flex items-center gap-1 text-gray-400 hover:text-white mt-2"
+            >
+              {showReplies ? (
+                <ChevronDown size={16} />
+              ) : (
+                <ChevronRight size={16} />
+              )}
+              {replies.length} replies
+            </button>
+          )}
+
+          {showReplies && (
             <div className="ml-8 mt-4">
-              {comment.replies!.map((reply) => (
-                <SingleComment
-                  key={reply.id}
-                  comment={reply}
-                  onAddReply={onAddReply}
-                  onToggleReplies={onToggleReplies}
-                />
-              ))}
+              {replies &&
+                Array.isArray(replies) &&
+                replies.map((reply: any) => (
+                  <SingleComment
+                    key={reply.id}
+                    comment={reply}
+                    videoId={videoId}
+                    currentUserId={currentUserId}
+                    onCommentUpdate={onCommentUpdate}
+                  />
+                ))}
             </div>
           )}
         </div>
@@ -190,35 +347,14 @@ const SingleComment = React.memo(
 
 SingleComment.displayName = "SingleComment";
 
-const CommentSection = React.memo(() => {
-  const [comments, setComments] = useState<Comment[]>([]);
-
-  // Helper function to find and update a comment in the nestted format using recursion
-  const updateCommentTree = useCallback(
-    (
-      comments: Comment[],
-      commentId: string,
-      updateFn: (comment: Comment) => Comment
-    ): Comment[] => {
-      return comments.map((comment) => {
-        if (comment.id === commentId) {
-          return updateFn(comment);
-        }
-        if (comment.replies) {
-          return {
-            ...comment,
-            replies: updateCommentTree(comment.replies, commentId, updateFn),
-          };
-        }
-        return comment;
-      });
-    },
-    []
-  );
-
-  //fetching user data with email
+const CommentSection = React.memo(({ videoId }: { videoId: string }) => {
   const [sessionUser, setSessionUser] = useState<any>(null);
   const [isLoadingSession, setIsLoadingSession] = useState(true);
+
+  const { data: comments = [], refetch: refetchComments } =
+    useGetVideoCommentsQuery({ videoId }, { refetchOnMountOrArgChange: true });
+
+  const [createComment] = useCreateCommentMutation();
 
   useEffect(() => {
     const fetchSessionUser = async () => {
@@ -234,86 +370,61 @@ const CommentSection = React.memo(() => {
     fetchSessionUser();
   }, []);
 
-  const {
-    data: userData,
-    isLoading: isUserDataLoading,
-    error: userError,
-    refetch: refetchUser,
-  } = useGetUserQuery(
+  const { data: userData } = useGetUserQuery(
     { email: sessionUser?.email },
     {
       skip: isLoadingSession || !sessionUser?.email,
-      pollingInterval: 0,
-      refetchOnMountOrArgChange: true,
     }
   );
-  console.log(userData,"user data got")
 
-  const handleAddComment = useCallback(
-    (text: string, parentId?: string) => {
-      const newComment: Comment = {
-        id: Math.random().toString(),
-        text,
-        user: {
-          name: "Current User",
-          avatar: "/api/placeholder/32/32",
-        },
-        likes: 0,
-        timestamp: "just now",
-        replies: [],
-        showReplies: true,
-      };
+  userData?.user._id;
+  const handleAddComment = async (text: string) => {
+    try {
+      if (userData?.user._id && videoId) {
+        await createComment({
+          videoId,
+          text,
+          userId: userData?.user?._id,
+        }).unwrap();
+      }
+      refetchComments();
+    } catch (error) {
+      console.error("Failed to create comment:", error);
+    }
+  };
 
-      setComments((prevComments) => {
-        if (!parentId) {
-          return [newComment, ...prevComments];
-        }
-
-        return updateCommentTree(prevComments, parentId, (comment) => ({
-          ...comment,
-          replies: [...(comment.replies || []), newComment],
-          showReplies: true,
-        }));
-      });
-    },
-    [updateCommentTree]
-  );
-
-  console.log(comments, "comments");
-
-  const toggleReplies = useCallback(
-    (commentId: string) => {
-      setComments((prevComments) =>
-        updateCommentTree(prevComments, commentId, (comment) => ({
-          ...comment,
-          showReplies: !comment.showReplies,
-        }))
-      );
-    },
-    [updateCommentTree]
-  );
-
+  if (!userData?.user) {
+    return (
+      <Alert>
+        <AlertDescription>
+          Please sign in to comment on this video.
+        </AlertDescription>
+      </Alert>
+    );
+  }
+  const currentUserId = userData.user._id || "";
+  console.log(comments, "comments got");
+  console.log(currentUserId, "current user");
   return (
     <div className="p-4">
       <h3 className="text-white text-lg font-bold mb-4">
         {comments.length} Comments
       </h3>
 
-      <ReplyInput
-        onSubmit={(text) => handleAddComment(text)}
-        onCancel={() => {}}
-        initialValue=""
-      />
+      <ReplyInput onSubmit={handleAddComment} onCancel={() => {}} />
 
       <div className="space-y-4">
-        {comments.map((comment) => (
-          <SingleComment
-            key={comment.id}
-            comment={comment}
-            onAddReply={handleAddComment}
-            onToggleReplies={toggleReplies}
-          />
-        ))}
+        {comments &&
+          Array.isArray(comments) &&
+          comments.map((comment: any) => (
+            <SingleComment
+              key={comment._id}
+              comment={comment}
+              videoId={videoId}
+              currentUserId={currentUserId}
+              onCommentUpdate={refetchComments}
+            />
+          ))}
       </div>
     </div>
   );
@@ -331,7 +442,7 @@ const VideoPlayer = () => {
   const [showControls, setShowControls] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
-  const [videoUrl, setVideoUrl] = useState("");
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [showQualityMenu, setShowQualityMenu] = useState(false);
   const [currentQuality, setCurrentQuality] = useState("1080p");
   const [isBuffering, setIsBuffering] = useState(false);
@@ -358,6 +469,7 @@ const VideoPlayer = () => {
     };
     fetchVideoUrl();
   }, [videoData?.s3Key]);
+  console.log(videoData, videoUrl, "all video data");
 
   const formatTime = useCallback((time: number) => {
     const hours = Math.floor(time / 3600);
@@ -746,7 +858,7 @@ const VideoPlayer = () => {
           </div>
         </div>
 
-        <CommentSection />
+        <CommentSection videoId={id} />
       </div>
 
       <div className="w-full xl:w-[400px] bg-black p-4">

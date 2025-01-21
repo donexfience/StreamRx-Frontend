@@ -14,7 +14,7 @@ interface SocialLink {
 
 export interface UserResponse {
   user: {
-    id: string;
+    _id: string;
     username: string;
     email: string;
     role: string;
