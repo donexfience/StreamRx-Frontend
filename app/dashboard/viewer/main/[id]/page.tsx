@@ -26,9 +26,15 @@ import { useParams } from "next/navigation";
 import {
   useCreateCommentMutation,
   useDeleteCommentMutation,
+  useGetCommentInteractionQuery,
+  useGetInteractionStatusQuery,
   useGetRepliesQuery,
   useGetVideoByIdQuery,
   useGetVideoCommentsQuery,
+  useToggleCommentDislikeMutation,
+  useToggleCommentLikeMutation,
+  useToggleDisLikeMutation,
+  useToggleLikeMutation,
   useUpdateCommentMutation,
 } from "@/redux/services/channel/videoApi";
 import { getPresignedUrl } from "@/app/lib/action/s3";
@@ -36,6 +42,13 @@ import { useGetUserQuery } from "@/redux/services/user/userApi";
 import { getUserFromCookies } from "@/app/lib/action/auth";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { timeAgo } from "@/lib/utils";
+import {
+  useGetChannelByIdQuery,
+  useGetSubscriptionStatusQuery,
+  useSubscribeToChannelMutation,
+  useUnsubscribeFromChannelMutation,
+} from "@/redux/services/channel/channelApi";
+import { Button } from "@/components/ui/button";
 
 interface Comment {
   _id: string;
@@ -47,6 +60,7 @@ interface Comment {
     _id: string;
   };
   likes: number;
+  dislikes: number;
   createdAt: string;
   timestamp: string;
   parentCommentId?: string;
@@ -77,7 +91,6 @@ const ReplyInput = React.memo(
           const user = await getUserFromCookies();
           setSessionUser(user?.user);
         } catch (error) {
-          console.error("Error fetching session:", error);
         } finally {
           setIsLoadingSession(false);
         }
@@ -159,16 +172,14 @@ const SingleComment = React.memo(
     const [createComment] = useCreateCommentMutation();
     const [updateComment] = useUpdateCommentMutation();
     const [deleteComment] = useDeleteCommentMutation();
-    console.log(comment, "in the singleComponent", comment._id);
     const [isReplying, setIsReplying] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [showReplies, setShowReplies] = useState(true);
 
     const { data: replies = [], refetch: refetchReplies } = useGetRepliesQuery(
       { commentId: comment?._id },
-      { skip: !showReplies }
+      { skip: !showReplies, refetchOnMountOrArgChange: true }
     );
-    console.log(replies, "replies in the single commponent");
     const [sessionUser, setSessionUser] = useState<any>(null);
     const [isLoadingSession, setIsLoadingSession] = useState(true);
     useEffect(() => {
@@ -177,7 +188,6 @@ const SingleComment = React.memo(
           const user = await getUserFromCookies();
           setSessionUser(user?.user);
         } catch (error) {
-          console.error("Error fetching session:", error);
         } finally {
           setIsLoadingSession(false);
         }
@@ -191,11 +201,17 @@ const SingleComment = React.memo(
         skip: isLoadingSession || !sessionUser?.email,
       }
     );
+
+    const [toggleLike] = useToggleCommentLikeMutation();
+    const [toggleDislike] = useToggleCommentDislikeMutation();
+
+    const { data: interactionStatus } = useGetCommentInteractionQuery(
+      { commentId: comment._id, userId: currentUserId },
+      { skip: !currentUserId }
+    );
     const handleReply = async (text: string) => {
       try {
-        console.log("something got for hadleREplay");
         if (userData?.user?._id && videoId) {
-          console.log("user data", "dd", comment._id, userData?.user?._id);
           await createComment({
             videoId,
             text,
@@ -205,29 +221,62 @@ const SingleComment = React.memo(
         }
 
         setIsReplying(false);
-        if (showReplies) {
-          refetchReplies();
-        } else {
-          setShowReplies(true);
-        }
+        refetchReplies();
         onCommentUpdate();
+      } catch (error) {}
+    };
+
+    const handleLike = async () => {
+      try {
+        if (currentUserId) {
+          if (interactionStatus?.disliked) {
+            // If currently disliked, remove dislike first
+            await toggleDislike({
+              commentId: comment._id,
+              userId: currentUserId,
+            }).unwrap();
+          }
+          await toggleLike({
+            commentId: comment._id,
+            userId: currentUserId,
+          }).unwrap();
+          onCommentUpdate();
+        }
       } catch (error) {
-        console.error("Failed to create reply:", error);
+        console.error("Failed to toggle like:", error);
+      }
+    };
+
+    const handleDislike = async () => {
+      try {
+        if (currentUserId) {
+          if (interactionStatus?.liked) {
+            // If currently liked, remove like first
+            await toggleLike({
+              commentId: comment._id,
+              userId: currentUserId,
+            }).unwrap();
+          }
+          await toggleDislike({
+            commentId: comment._id,
+            userId: currentUserId,
+          }).unwrap();
+          onCommentUpdate();
+        }
+      } catch (error) {
+        console.error("Failed to toggle dislike:", error);
       }
     };
 
     const handleEdit = async (text: string) => {
       try {
-        console.log(comment._id, "deleting comment id");
         await updateComment({
           commentId: comment._id,
           text,
         }).unwrap();
         setIsEditing(false);
         onCommentUpdate();
-      } catch (error) {
-        console.error("Failed to update comment:", error);
-      }
+      } catch (error) {}
     };
 
     const handleDelete = async () => {
@@ -235,12 +284,12 @@ const SingleComment = React.memo(
         const response = await deleteComment({
           commentId: comment._id,
         }).unwrap();
-        console.log(response, "response after delete");
-        refetchReplies();
+        if (comment.parentCommentId) {
+          refetchReplies();
+        }
         onCommentUpdate();
-      } catch (error) {
-        console.error("Failed to delete comment:", error);
-      }
+        refetchReplies();
+      } catch (error) {}
     };
     const userName = comment.userId?.username || "Anonymous";
     const userAvatar =
@@ -269,12 +318,34 @@ const SingleComment = React.memo(
             <>
               <p className="mt-1">{comment.text}</p>
               <div className="flex items-center gap-4 mt-2">
-                <button className="flex items-center gap-1 hover:bg-gray-800 p-2 rounded-full">
-                  <ThumbsUp size={16} />
+                <button
+                  onClick={handleLike}
+                  className={`flex items-center gap-1 p-2 rounded-full ${
+                    interactionStatus?.liked
+                      ? "text-blue-500 bg-blue-500/10"
+                      : "text-gray-400 hover:bg-gray-800"
+                  }`}
+                >
+                  <ThumbsUp
+                    size={16}
+                    fill={interactionStatus?.liked ? "currentColor" : "none"}
+                  />
                   {comment.likes}
                 </button>
-                <button className="flex items-center gap-1 hover:bg-gray-800 p-2 rounded-full">
-                  <ThumbsDown size={16} />
+
+                <button
+                  onClick={handleDislike}
+                  className={`flex items-center gap-1 p-2 rounded-full ${
+                    interactionStatus?.disliked
+                      ? "text-blue-500 bg-blue-500/10"
+                      : "text-gray-400 hover:bg-gray-800"
+                  }`}
+                >
+                  <ThumbsDown
+                    size={16}
+                    fill={interactionStatus?.disliked ? "currentColor" : "none"}
+                  />
+                  {comment.dislikes}
                 </button>
                 <button
                   onClick={() => setIsReplying(!isReplying)}
@@ -353,7 +424,7 @@ const CommentSection = React.memo(({ videoId }: { videoId: string }) => {
 
   const { data: comments = [], refetch: refetchComments } =
     useGetVideoCommentsQuery({ videoId }, { refetchOnMountOrArgChange: true });
-
+  console.log(comments, "comments got");
   const [createComment] = useCreateCommentMutation();
 
   useEffect(() => {
@@ -362,7 +433,6 @@ const CommentSection = React.memo(({ videoId }: { videoId: string }) => {
         const user = await getUserFromCookies();
         setSessionUser(user?.user);
       } catch (error) {
-        console.error("Error fetching session:", error);
       } finally {
         setIsLoadingSession(false);
       }
@@ -388,9 +458,7 @@ const CommentSection = React.memo(({ videoId }: { videoId: string }) => {
         }).unwrap();
       }
       refetchComments();
-    } catch (error) {
-      console.error("Failed to create comment:", error);
-    }
+    } catch (error) {}
   };
 
   if (!userData?.user) {
@@ -403,8 +471,6 @@ const CommentSection = React.memo(({ videoId }: { videoId: string }) => {
     );
   }
   const currentUserId = userData.user._id || "";
-  console.log(comments, "comments got");
-  console.log(currentUserId, "current user");
   return (
     <div className="p-4">
       <h3 className="text-white text-lg font-bold mb-4">
@@ -455,22 +521,6 @@ const VideoPlayer = () => {
   const params = useParams();
   const id = params.id as string;
 
-  const { data: videoData, isLoading } = useGetVideoByIdQuery(
-    { id },
-    { skip: !id }
-  );
-
-  useEffect(() => {
-    const fetchVideoUrl = async () => {
-      if (videoData?.s3Key) {
-        const url = await getPresignedUrl(videoData.s3Key);
-        setVideoUrl(url);
-      }
-    };
-    fetchVideoUrl();
-  }, [videoData?.s3Key]);
-  console.log(videoData, videoUrl, "all video data");
-
   const formatTime = useCallback((time: number) => {
     const hours = Math.floor(time / 3600);
     const minutes = Math.floor((time % 3600) / 60);
@@ -483,6 +533,113 @@ const VideoPlayer = () => {
     return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   }, []);
 
+  const {
+    data: videoData,
+    refetch: GetVideoRefetch,
+    isLoading,
+  } = useGetVideoByIdQuery({ id }, { skip: !id });
+  const [sessionUser, setSessionUser] = useState<any>(null);
+  const [isLoadingSession, setIsLoadingSession] = useState(true);
+  console.log(videoData, "vidoedata");
+  useEffect(() => {
+    const fetchSessionUser = async () => {
+      try {
+        const user = await getUserFromCookies();
+        setSessionUser(user?.user);
+      } catch (error) {
+      } finally {
+        setIsLoadingSession(false);
+      }
+    };
+    fetchSessionUser();
+  }, []);
+
+  const { data: userData } = useGetUserQuery(
+    { email: sessionUser?.email },
+    {
+      skip: isLoadingSession || !sessionUser?.email,
+    }
+  );
+  const userId = userData?.user?._id || "";
+  const [toggleLike] = useToggleLikeMutation();
+  const [toggleDislike] = useToggleDisLikeMutation();
+  const { data: interactionStatus, refetch: refetchInteraction } =
+    useGetInteractionStatusQuery(
+      { videoId: id, userId: userId },
+      { skip: !id }
+    );
+
+  const [isVideoLoading, setIsVideoLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchVideoUrl = async () => {
+      setIsVideoLoading(true);
+      if (videoData?.s3Key) {
+        const url = await getPresignedUrl(videoData.s3Key);
+        setVideoUrl(url);
+      }
+    };
+    fetchVideoUrl();
+  }, [videoData?.s3Key]);
+
+  const handleLike = async () => {
+    try {
+      if (userId && !interactionStatus?.liked) {
+        await toggleLike({
+          videoId: id,
+          userId: userId,
+        }).unwrap();
+
+        refetchInteraction();
+        GetVideoRefetch();
+      }
+    } catch (error) {}
+  };
+
+  const handleDislike = async () => {
+    try {
+      if (userId && !interactionStatus?.liked) {
+        await toggleDislike({ videoId: id, userId: userId }).unwrap();
+        refetchInteraction();
+        GetVideoRefetch();
+      }
+    } catch (error) {}
+  };
+  const channelId = videoData?.channelId?._id || "";
+  const {
+    data: subscriptionStatus,
+    refetch: subscriptionStatusfetch,
+    isLoading: statusLoading,
+  } = useGetSubscriptionStatusQuery(
+    {
+      userId,
+      channelId,
+    },
+    { refetchOnMountOrArgChange: true }
+  );
+  console.log(subscriptionStatus, "substatus");
+
+  const [subscribe, { isLoading: subscribeLoading }] =
+    useSubscribeToChannelMutation();
+  const [unsubscribe, { isLoading: unsubscribeLoading }] =
+    useUnsubscribeFromChannelMutation();
+  const isLoadings = statusLoading || subscribeLoading || unsubscribeLoading;
+
+  const handleSubscriptionToggle = async () => {
+    try {
+      if (subscriptionStatus?.isSubscribed) {
+        await unsubscribe({ userId, channelId }).unwrap();
+      } else {
+        await subscribe({ userId, channelId }).unwrap();
+      }
+
+      // Force refetch both subscription status and video data
+      await Promise.all([subscriptionStatusfetch(), GetVideoRefetch()]);
+      console.log(subscriptionStatus.isSubscribed, "status of susbription");
+    } catch (error) {
+      console.error("Failed to toggle subscription:", error);
+    }
+  };
   const togglePlay = useCallback(() => {
     if (!videoRef.current) return;
     if (isPlaying) {
@@ -580,9 +737,7 @@ const VideoPlayer = () => {
         }
         setIsFullscreen(false);
       }
-    } catch (error) {
-      console.error("Error toggling fullscreen:", error);
-    }
+    } catch (error) {}
   }, []);
 
   useEffect(() => {
@@ -746,6 +901,9 @@ const VideoPlayer = () => {
     togglePlay,
     toggleFullscreen,
   ]);
+  const channelName = videoData?.channelId?.channelName;
+  const subscribers = videoData?.channelId?.subscribersCount;
+  console.log(subscribers, "subscribers");
 
   return (
     <div className="flex flex-col lg:flex-row bg-black min-h-screen w-full">
@@ -772,46 +930,62 @@ const VideoPlayer = () => {
               setShowControls(false);
             }}
           >
+            {/* Add loading spinner when video is loading */}
+            {isVideoLoading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="w-16 h-16 border-4 border-gray-600 border-t-red-600 rounded-full animate-spin" />
+                  <p className="text-gray-400">Loading video...</p>
+                </div>
+              </div>
+            )}
+
             <video
               ref={videoRef}
               className="w-full aspect-video bg-black cursor-pointer"
-              src={videoUrl}
+              src={videoUrl || undefined} // Fix TypeScript error by using undefined when null
               poster={videoData?.thumbnailUrl}
               onClick={togglePlay}
+              onLoadStart={() => setIsVideoLoading(true)}
+              onCanPlay={() => setIsVideoLoading(false)}
               onTimeUpdate={() =>
                 setCurrentTime(videoRef.current?.currentTime || 0)
               }
-              onLoadedMetadata={() =>
-                setDuration(videoRef.current?.duration || 0)
-              }
+              onLoadedMetadata={() => {
+                setDuration(videoRef.current?.duration || 0);
+                setIsVideoLoading(false);
+              }}
               onPlay={() => setIsPlaying(true)}
               onPause={() => setIsPlaying(false)}
               onWaiting={() => setIsBuffering(true)}
-              onPlaying={() => setIsBuffering(false)}
+              onPlaying={() => {
+                setIsBuffering(false);
+                setIsVideoLoading(false);
+              }}
             />
-
-            {isBuffering && (
+            {!isVideoLoading && isBuffering && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/50">
                 <div className="w-12 h-12 border-4 border-gray-300 border-t-blue-500 rounded-full animate-spin" />
               </div>
             )}
 
             {VideoControls}
-
-            <div
-              className={`absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 transition-opacity duration-300 ${
-                !isPlaying && (showControls || isHovering)
-                  ? "opacity-100"
-                  : "opacity-0"
-              }`}
-            >
-              <button
-                onClick={togglePlay}
-                className="text-white hover:text-gray-300 bg-black/50 rounded-full p-4"
+            {!isVideoLoading && (
+              <div
+                className={`absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 transition-opacity duration-300 ${
+                  !isPlaying && (showControls || isHovering)
+                    ? "opacity-100"
+                    : "opacity-0"
+                }`}
               >
-                <Play size={48} />
-              </button>
-            </div>
+                <button
+                  onClick={togglePlay}
+                  className="text-white hover:text-gray-300 bg-black/50 rounded-full p-4"
+                >
+                  <Play size={48} />
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="p-4 border-b border-gray-700">
@@ -827,26 +1001,65 @@ const VideoPlayer = () => {
                 />
                 <div>
                   <h3 className="text-white font-medium">
-                    {videoData?.channelName || "Channel Name"}
+                    {channelName || "Channel Name"}
                   </h3>
                   <p className="text-gray-400 text-sm">
-                    {videoData?.subscribers || "1M subscribers"}
+                    {`${subscribers} subscribers` || "1M subscribers"}
                   </p>
                 </div>
-                <button className="bg-white text-black px-4 py-2 rounded-full font-medium hover:bg-gray-200">
-                  Subscribe
-                </button>
+                <Button
+                  onClick={handleSubscriptionToggle}
+                  disabled={isLoading}
+                  variant={
+                    subscriptionStatus?.isSubscribed ? "secondary" : "default"
+                  }
+                  className={`rounded-full font-medium ${
+                    subscriptionStatus?.isSubscribed
+                      ? "bg-gray-800 text-white"
+                      : "bg-white text-black"
+                  }`}
+                >
+                  {isLoading
+                    ? "Loading..."
+                    : subscriptionStatus?.isSubscribed
+                    ? "Subscribed"
+                    : "Subscribe"}
+                </Button>
               </div>
               <div className="flex items-center gap-2">
                 <div className="flex bg-gray-800 rounded-full">
-                  <button className="flex items-center gap-1 px-4 py-2 hover:bg-gray-700 rounded-l-full">
-                    <ThumbsUp size={20} />
+                  <button
+                    className={`flex items-center gap-1 px-4 py-2 hover:bg-gray-700 rounded-l-full ${
+                      interactionStatus?.liked ? "text-blue-500" : "text-white"
+                    }`}
+                    onClick={handleLike}
+                    disabled={interactionStatus?.liked}
+                  >
+                    <ThumbsUp
+                      size={20}
+                      fill={interactionStatus?.liked ? "currentColor" : "none"}
+                    />
                     <span className="text-white">
-                      {videoData?.likes || "10K"}
+                      {videoData?.engagement?.likeCount || "0"}
                     </span>
                   </button>
-                  <button className="flex items-center gap-1 px-4 py-2 hover:bg-gray-700 rounded-r-full border-l border-gray-700">
-                    <ThumbsDown size={20} />
+                  <button
+                    className={`flex items-center gap-1 px-4 py-2 hover:bg-gray-700 rounded-r-full border-l border-gray-700 ${
+                      interactionStatus?.disliked
+                        ? "text-blue-500"
+                        : "text-white"
+                    }`}
+                    onClick={handleDislike}
+                  >
+                    <ThumbsDown
+                      size={20}
+                      fill={
+                        interactionStatus?.disliked ? "currentColor" : "none"
+                      }
+                    />
+                    <span className="text-white">
+                      {videoData?.engagement?.dislikeCount || "0"}
+                    </span>
                   </button>
                 </div>
                 <button className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-full">

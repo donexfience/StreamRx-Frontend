@@ -144,7 +144,7 @@ export interface VideoQuality {
 
 export interface VideoData {
   _id: string;
-  channelId: string;
+  channelId: any;
   category: string;
   createdAt: string;
   updatedAt: string;
@@ -162,6 +162,8 @@ export interface VideoData {
   visibility: string;
   __v: number;
   engagement: VideoEngagement;
+  channelName: string;
+  subscribers: number;
 }
 
 export interface Comment {
@@ -179,6 +181,11 @@ export interface Comment {
     updatedAt: string;
   };
 }
+
+export interface SubscriptionStatus {
+  isSubscribed: boolean;
+}
+
 
 export interface CommentResponse {
   success: boolean;
@@ -219,6 +226,7 @@ export interface VideoItem {
   createdAt: string;
   updatedAt: string;
   channelId?: Record<string, any>;
+  channelName: string;
 }
 
 export interface AllVideoUploadResponse {

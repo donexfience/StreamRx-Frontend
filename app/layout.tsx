@@ -9,6 +9,7 @@ import { SessionProvider } from "next-auth/react";
 import { Toaster } from "react-hot-toast";
 import { PersistGate } from "redux-persist/integration/react";
 import { Theme, ThemePanel } from "@radix-ui/themes";
+import { SocketProvider } from "./context/SocketContext";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -49,16 +50,18 @@ export default function RootLayout({
             },
           }}
         />
-        <Provider store={store}>
-          <Theme
-            accentColor="crimson"
-            grayColor="sand"
-            radius="large"
-            scaling="95%"
-          >
-            {children}
-          </Theme>
-        </Provider>
+        <SocketProvider>
+          <Provider store={store}>
+            <Theme
+              accentColor="crimson"
+              grayColor="sand"
+              radius="large"
+              scaling="95%"
+            >
+              {children}
+            </Theme>
+          </Provider>
+        </SocketProvider>
       </body>
     </html>
   );

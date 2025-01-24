@@ -284,14 +284,36 @@ export async function getAuthCookies() {
   }
 }
 
+export async function checkBlockedUser(blockedEmail: string) {
+  try {
+    const cookieStore = await cookies();
+    const accessToken = cookieStore.get("refreshToken")?.value;
+
+    if (!accessToken) {
+      return { isBlocked: false, currentUserEmail: null };
+    }
+
+    const decoded = jwt.verify(accessToken, process.env.JWT_SECRET!) as {
+      email: string;
+    };
+    console.log(decoded, "decoded data");
+    return {
+      isBlocked: decoded.email === blockedEmail,
+      currentUserEmail: decoded.email,
+    };
+  } catch (error) {
+    console.error("Token verification failed", error);
+    return { isBlocked: false, currentUserEmail: null };
+  }
+}
+
 interface TokenPayload {
   username: string;
   email: string;
   role: string;
   exp: number;
   iat: number;
-  id:string
-
+  id: string;
 }
 
 export async function getUserFromCookies() {

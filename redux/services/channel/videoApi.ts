@@ -76,6 +76,36 @@ export const httpVideoApi = createApi({
       }),
     }),
 
+    toggleCommentLike: builder.mutation<
+      Comment,
+      { commentId: string; userId: string }
+    >({
+      query: ({ commentId, userId }) => ({
+        url: `comments/${commentId}/like`,
+        method: "POST",
+        body: { userId },
+      }),
+    }),
+
+    toggleCommentDislike: builder.mutation<
+      Comment,
+      { commentId: string; userId: string }
+    >({
+      query: ({ commentId, userId }) => ({
+        url: `comments/${commentId}/dislike`,
+        method: "POST",
+        body: { userId },
+      }),
+    }),
+
+    getCommentInteraction: builder.query<
+      { liked: boolean; disliked: boolean },
+      { commentId: string; userId: string }
+    >({
+      query: ({ commentId, userId }) =>
+        `comments/${commentId}/interaction?userId=${userId}`,
+    }),
+
     getVideoComments: builder.query<Comment[], { videoId: string }>({
       query: ({ videoId }) => ({
         url: `comments/comment/${videoId}`,
@@ -112,6 +142,44 @@ export const httpVideoApi = createApi({
         method: "DELETE",
       }),
     }),
+    toggleLike: builder.mutation<
+      { liked: boolean },
+      { videoId: string; userId: string }
+    >({
+      query: ({ videoId, userId }) => ({
+        url: `/videoes/${videoId}/like`,
+        method: "POST",
+        body: {
+          userId,
+        },
+      }),
+    }),
+
+    toggleDisLike: builder.mutation<
+      { disliked: boolean },
+      { videoId: string; userId: string }
+    >({
+      query: ({ videoId, userId }) => ({
+        url: `/videoes/${videoId}/dislike`,
+        method: "POST",
+        body: {
+          userId,
+        },
+      }),
+    }),
+
+    getInteractionStatus: builder.query<
+      { liked: boolean; disliked: boolean },
+      { videoId: string; userId: string }
+    >({
+      query: ({ videoId, userId }) => ({
+        url: `videoes/${videoId}/interaction-status`,
+        body: {
+          userId,
+        },
+        method: "GET",
+      }),
+    }),
   }),
 });
 
@@ -125,4 +193,10 @@ export const {
   useGetAllVideosQuery,
   useGetVideoByQueryQuery,
   useGetVideoByIdQuery,
+  useGetInteractionStatusQuery,
+  useToggleDisLikeMutation,
+  useToggleLikeMutation,
+  useGetCommentInteractionQuery,
+  useToggleCommentDislikeMutation,
+  useToggleCommentLikeMutation
 } = httpVideoApi;

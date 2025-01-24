@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { getUserFromCookies } from "./lib/action/auth";
 
 export default function Home() {
+  
   const [users, setUsers] = useState<any>(null);
   const [hasReloaded, setHasReloaded] = useState(false);
 

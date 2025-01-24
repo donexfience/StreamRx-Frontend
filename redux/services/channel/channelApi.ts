@@ -1,6 +1,10 @@
 import { createApi } from "@reduxjs/toolkit/query/react";
 import { baseQueryWithTokenHandling } from "./channelBaseQuery";
-import { ChannelCreationRequest, ChannelCreationResponse, getChannelResponse } from "./channel";
+import {
+  ChannelCreationRequest,
+  ChannelCreationResponse,
+  getChannelResponse,
+} from "./channel";
 
 export const httpChannelApi = createApi({
   reducerPath: "httpChannelApi",
@@ -28,8 +32,45 @@ export const httpChannelApi = createApi({
         };
       },
     }),
+    getChannelById: builder.query<getChannelResponse, string>({
+      query: (id) => {
+        return {
+          url: `/channels/getchannel${id}`,
+          method: "GET",
+        };
+      },
+    }),
+    subscribeToChannel: builder.mutation({
+      query: ({ userId, channelId }) => ({
+        url: "/channels/subscribe",
+        method: "POST",
+        body: { userId, channelId },
+      }),
+    }),
+    unsubscribeFromChannel: builder.mutation({
+      query: ({ userId, channelId }) => ({
+        url: "/channels/unsubscribe",
+        method: "POST",
+        body: { userId, channelId },
+      }),
+    }),
+    getSubscriptionStatus: builder.query({
+      query: ({ userId, channelId }) =>
+        `channels/subscribe/status?userId=${userId}&channelId=${channelId}`,
+    }),
+
+    getSubscriberCount: builder.query({
+      query: (channelId) => `subscribe/count/${channelId}`,
+    }),
   }),
 });
 
-export const { useCreateChannelMutation, useGetChannelByEmailQuery } =
-  httpChannelApi;
+export const {
+  useCreateChannelMutation,
+  useGetChannelByEmailQuery,
+  useGetSubscriberCountQuery,
+  useGetSubscriptionStatusQuery,
+  useSubscribeToChannelMutation,
+  useUnsubscribeFromChannelMutation,
+  useGetChannelByIdQuery,
+} = httpChannelApi;
