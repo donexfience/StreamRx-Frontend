@@ -180,12 +180,26 @@ export const httpVideoApi = createApi({
         method: "GET",
       }),
     }),
+    editVideo: builder.mutation<
+      VideoData,
+      { videoId: string; updateData: Partial<VideoData> }
+    >({
+      query: ({ videoId, updateData }) => ({
+        url: `/videoes/${videoId}`,
+        method: "PUT",
+        body: updateData,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }),
+    }),
   }),
 });
 
 export const {
   useUploadVideoMutation,
   useCreateCommentMutation,
+  useEditVideoMutation,
   useDeleteCommentMutation,
   useGetRepliesQuery,
   useGetVideoCommentsQuery,
@@ -198,5 +212,5 @@ export const {
   useToggleLikeMutation,
   useGetCommentInteractionQuery,
   useToggleCommentDislikeMutation,
-  useToggleCommentLikeMutation
+  useToggleCommentLikeMutation,
 } = httpVideoApi;

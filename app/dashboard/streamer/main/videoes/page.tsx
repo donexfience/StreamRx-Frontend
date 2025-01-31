@@ -1,10 +1,24 @@
 "use client";
 import React, { useEffect, useState } from "react";
-import { Clock, Filter, Plus, Search, Eye, MessageSquare } from "lucide-react";
+import {
+  Clock,
+  Filter,
+  Plus,
+  Search,
+  Eye,
+  MessageSquare,
+  Edit,
+  Trash2,
+} from "lucide-react";
 import VideoUploadFlow from "@/components/modals/videoUploadModal";
 import { getUserFromCookies } from "@/app/lib/action/auth";
 import { useGetChannelByEmailQuery } from "@/redux/services/channel/channelApi";
-import { useGetAllVideosQuery } from "@/redux/services/channel/videoApi";
+import {
+  useEditVideoMutation,
+  useGetAllVideosQuery,
+} from "@/redux/services/channel/videoApi";
+import EditVideoFlow from "@/components/modals/EditVideoUpload";
+import toast from "react-hot-toast";
 
 const VideoListingPage = () => {
   const [users, setUsers] = useState<any>(null);
@@ -35,6 +49,30 @@ const VideoListingPage = () => {
   } = useGetChannelByEmailQuery(users?.email, { skip: !users?.email });
 
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [selectedVideo, setSelectedVideo] = useState<any>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const handleEditClick = (video: any) => {
+    setSelectedVideo(video);
+    setShowEditModal(true);
+  };
+
+  const [editVideo, { isLoading: editLoading, error }] = useEditVideoMutation();
+
+  const handleVideoUpdate = async (updatedData: any) => {
+    try {
+      console.log("Video updated with data:", updatedData);
+      const response = await editVideo({
+        videoId: updatedData._id,
+        updateData: updatedData,
+      }).unwrap();
+      toast.success("video updated succesfully");
+      console.log("Video updated successfully:", response);
+      setShowEditModal(false);
+    } catch (error) {
+      console.error("error", error);
+      toast.error("failed to update video");
+    }
+  };
 
   const recommendedCategories = [
     { icon: <Eye className="w-5 h-5 text-blue-500" />, text: "View Analytics" },
@@ -186,6 +224,22 @@ const VideoListingPage = () => {
                     style={{ width: `${video.processingProgress}%` }}
                   />
                 </div>
+                <div>
+                  <div className="flex items-center gap-4 ml-4">
+                    <button
+                      className="p-2 rounded-full hover:bg-gray-100"
+                      onClick={() => handleEditClick(video)}
+                    >
+                      <Edit className="w-5 h-5 text-blue-500" />
+                    </button>
+                    <button
+                      className="p-2 rounded-full hover:bg-gray-100"
+                      onClick={() => console.log("Delete video", video.id)}
+                    >
+                      <Trash2 className="w-5 h-5 text-red-500" />
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -197,6 +251,15 @@ const VideoListingPage = () => {
           refetch={refetch}
           onClose={() => setShowUploadModal(false)}
           onSuccess={handleVideoSubmit}
+          channelId={channelData?._id}
+        />
+      )}
+      {showEditModal && (
+        <EditVideoFlow
+          videoData={selectedVideo}
+          refetch={refetch}
+          onClose={() => setShowEditModal(false)}
+          onSuccess={handleVideoUpdate}
           channelId={channelData?._id}
         />
       )}

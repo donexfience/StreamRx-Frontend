@@ -152,6 +152,7 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
     { skip: !searchQuery }
   );
 
+  console.log(playlist, "playlists got");
   const validateFile = (file: File): string | null => {
     const allowedTypes = ["video/mp4", "video/quicktime", "video/x-msvideo"];
 
@@ -753,7 +754,7 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
                       <Search size={20} className="text-gray-400 mr-2" />
                       <input
                         type="text"
-                        placeholder="Search existing videos..."
+                        placeholder="Search existing playlist..."
                         className="outline-none"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
@@ -779,12 +780,12 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
                           onClick={() => handlePlaylistSelection(playlist)}
                         >
                           <img
-                            src="/assets/avathar/avathar.png"
+                            src={playlist.thumbnailUrl}
                             alt={playlist.title}
                             className="w-20 h-12 object-cover rounded"
                           />
                           <div>
-                            <div className="font-medium">{playlist.title}</div>
+                            <div className="font-medium">{playlist.name}</div>
                             <div className="text-sm text-gray-500">
                               {playlist.duration}
                             </div>

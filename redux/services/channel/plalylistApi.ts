@@ -40,10 +40,17 @@ export const httpPlaylistApi = createApi({
         );
         return {
           url: `/playlist/playlist`,
-          method: "GET",  
+          method: "GET",
           params: { query: encodeURIComponent(query) },
         };
       },
+    }),
+    getPlaylistsByIds: builder.query<any[], string[]>({
+      query: (ids) => ({
+        url: `/playlist/multiple`,
+        method: "GET",
+        params: { ids: ids.join(",") },
+      }),
     }),
   }),
 });
@@ -52,4 +59,5 @@ export const {
   useCreatePlaylistMutation,
   useGetAllPlaylistsQuery,
   useGetPlaylistByQueryQuery,
-  } = httpPlaylistApi;
+  useGetPlaylistsByIdsQuery
+} = httpPlaylistApi;

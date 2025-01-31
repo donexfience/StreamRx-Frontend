@@ -930,7 +930,7 @@ const VideoPlayer = () => {
               setShowControls(false);
             }}
           >
-            {/* Add loading spinner when video is loading */}
+            {" "}
             {isVideoLoading && (
               <div className="absolute inset-0 flex items-center justify-center bg-black">
                 <div className="flex flex-col items-center gap-4">
@@ -939,11 +939,10 @@ const VideoPlayer = () => {
                 </div>
               </div>
             )}
-
             <video
               ref={videoRef}
               className="w-full aspect-video bg-black cursor-pointer"
-              src={videoUrl || undefined} // Fix TypeScript error by using undefined when null
+              src={videoUrl || undefined}
               poster={videoData?.thumbnailUrl}
               onClick={togglePlay}
               onLoadStart={() => setIsVideoLoading(true)}
@@ -968,7 +967,6 @@ const VideoPlayer = () => {
                 <div className="w-12 h-12 border-4 border-gray-300 border-t-blue-500 rounded-full animate-spin" />
               </div>
             )}
-
             {VideoControls}
             {!isVideoLoading && (
               <div
