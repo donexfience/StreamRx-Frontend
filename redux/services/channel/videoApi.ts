@@ -65,6 +65,48 @@ export const httpVideoApi = createApi({
         };
       },
     }),
+
+    getVideoesBychannelId: builder.query<VideoData, { id: any }>({
+      query: ({ id }) => {
+        console.log("Query parameter in RTK Query:", id);
+        return {
+          url: `/videoes/channel/${id}`,
+          method: "GET",
+        };
+      },
+    }),
+
+    updateVideoPlaylist: builder.mutation({
+      query: ({ videoId, playlistId }) => ({
+        url: `/videos/${videoId}/playlist`,
+        method: "PATCH",
+        body: { playlistId },
+      }),
+    }),
+
+    bulkUpdateVideosPlaylist: builder.mutation<
+      VideoData[],
+      { videoIds: string[]; playlistId: string }
+    >({
+      query: ({ videoIds, playlistId }) => ({
+        url: `/videoes/bulkupdate`,
+        method: "PATCH",
+        body: { videoIds, playlistId },
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }),
+      transformResponse: (response: { success: boolean; data: VideoData[] }) =>
+        response.data,
+    }),
+
+    deleteVideo: builder.mutation({
+      query: ({ videoId }) => ({
+        url: `/videoes/${videoId}`,
+        method: "DELETE",
+      }),
+    }),
+
     createComment: builder.mutation<Comment, CreateCommentRequest>({
       query: ({ videoId, text, parentId, userId }) => ({
         url: `comments/video/${videoId}`,
@@ -203,10 +245,14 @@ export const {
   useDeleteCommentMutation,
   useGetRepliesQuery,
   useGetVideoCommentsQuery,
+  useDeleteVideoMutation,
   useUpdateCommentMutation,
+  useBulkUpdateVideosPlaylistMutation,
+  useUpdateVideoPlaylistMutation,
   useGetAllVideosQuery,
   useGetVideoByQueryQuery,
   useGetVideoByIdQuery,
+  useGetVideoesBychannelIdQuery,
   useGetInteractionStatusQuery,
   useToggleDisLikeMutation,
   useToggleLikeMutation,

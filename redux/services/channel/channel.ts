@@ -64,6 +64,7 @@ export interface getChannelResponse {
   contentType: string;
   email: string;
   category: string[];
+  subscribersCount: number;
   integrations: Integrations;
   schedulePreference: string;
   streamSchedule: StreamSchedule;
@@ -186,7 +187,6 @@ export interface SubscriptionStatus {
   isSubscribed: boolean;
 }
 
-
 export interface CommentResponse {
   success: boolean;
   data: Comment[];
@@ -271,6 +271,60 @@ export interface PlaylistResponse {
   }[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface SinglePlaylistResponse {
+  playlist: {
+    _id: string;
+    channelId: {
+      _id: string;
+      channelName: string;
+      ownerId: string;
+      category: string[]; // Assuming category is an array
+      channelAccessibility: "public" | "private" | "unlisted"; // Adjust if needed
+    };
+    name: string;
+    description: string;
+    visibility: "public" | "private" | "unlisted";
+    category: string;
+    tags: string[];
+    thumbnailUrl: string;
+    status: string;
+    videos: {
+      _id: string;
+      videoId: {
+        _id: string;
+        title: string;
+        url: string;
+        duration: number;
+      };
+      next: string | null;
+      prev: string | null;
+    }[];
+    createdAt: string;
+    updatedAt: string;
+    __v: number;
+  };
+}
+
+interface VideoNode {
+  videoId: string;
+  videoUrl: string;
+  next: string | null;
+  prev: string | null;
+}
+
+export interface PlaylistUpdateData {
+  playlistId: string;
+  updates: {
+    name: string;
+    description: string;
+    visibility: "public" | "private" | "unlisted";
+    category: string;
+    tags: string[];
+    thumbnailUrl: string;
+    videos: VideoNode[];
+  };
 }
 
 export interface Playlist {

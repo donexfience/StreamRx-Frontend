@@ -1,6 +1,13 @@
 "use client";
 import React, { useEffect, useState } from "react";
-import { Calendar, Clock, MoreVertical, Play, Edit2 } from "lucide-react";
+import {
+  Calendar,
+  Clock,
+  MoreVertical,
+  Play,
+  Edit2,
+  Trash,
+} from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,18 +16,27 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useGetAllPlaylistsQuery } from "@/redux/services/channel/plalylistApi";
+import {
+  useDeletePlaylistMutation,
+  useGetAllPlaylistsQuery,
+} from "@/redux/services/channel/plalylistApi";
 import { useGetChannelByEmailQuery } from "@/redux/services/channel/channelApi";
 import { getUserFromCookies } from "@/app/lib/action/auth";
 import PlaylistCreationModal from "@/components/modals/PlayListCreationModal";
+import EditPlaylistModal from "@/components/modals/EditPlaylistModal";
+import { useRouter } from "next/navigation";
+import { deleteFromS3 } from "@/app/lib/action/s3";
 
 const PlaylistPage: React.FC = () => {
+  const router = useRouter();
   const [dateRangeOpen, setDateRangeOpen] = useState(false);
   const [users, setUsers] = useState<any>(null);
   const [visibilityFilter, setVisibilityFilter] = useState("all");
   const [page, setPage] = useState(1);
   const limit = 10;
   const [OpenModal, setOpenModal] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [selectedPlaylist, setSelectedPlaylist] = useState<any>(null);
   const handleClickOpenModal = () => {
     setOpenModal(!OpenModal);
   };
@@ -39,10 +55,12 @@ const PlaylistPage: React.FC = () => {
   } = useGetChannelByEmailQuery(users?.email ?? "", {
     skip: !users?.email,
   });
+  const [deletePlaylist] = useDeletePlaylistMutation();
 
   const {
     data,
     error: playlistError,
+    refetch: refetch,
     isLoading: playlistLoading,
   } = useGetAllPlaylistsQuery(
     {
@@ -56,8 +74,6 @@ const PlaylistPage: React.FC = () => {
   );
 
   // Debug logging
-  console.log("Channel Data:", channelData);
-  console.log("Playlist Response:", data);
 
   if (channelLoading || playlistLoading) {
     return <div className="p-8 ml-32 w-full">Loading...</div>;
@@ -67,7 +83,28 @@ const PlaylistPage: React.FC = () => {
     return <div className="p-8 ml-32 w-full">Error loading playlists</div>;
   }
 
-  // Access the playlists from the correct location in the response
+  const handleEditPlaylist = (playlist: any) => {
+    setSelectedPlaylist(playlist);
+    setEditModalOpen(true);
+  };
+
+  const handleDelete = async (playlist: any) => {
+    console.log(playlist, "video in the delete");
+    deletePlaylist({ playlistId: playlist._id });
+    refetch();
+  };
+
+  const handlePlayPlaylist = (playlist: any) => {
+    if (playlist.videos && playlist.videos.length > 0) {
+      const firstVideoId = playlist.videos[0].videoId._id;
+
+      router.push(`playlists/videoes/${playlist._id}`);
+    } else {
+      // Optional: Show a toast or alert that playlist is empty
+      alert("This playlist has no videos.");
+    }
+  };
+
   const playlists: any = data?.data ?? [];
 
   return (
@@ -89,8 +126,9 @@ const PlaylistPage: React.FC = () => {
           </div>
 
           <div className="flex gap-2">
-            <button className="px-4 py-2 rounded-lg bg-black text-white" 
-            onClick={handleClickOpenModal}
+            <button
+              className="px-4 py-2 rounded-lg bg-black text-white"
+              onClick={handleClickOpenModal}
             >
               + New Playlist
             </button>
@@ -112,8 +150,21 @@ const PlaylistPage: React.FC = () => {
           <PlaylistCreationModal
             onClose={handleClickOpenModal}
             isOpen={OpenModal}
+            refetch={refetch}
           />
         )}
+        {editModalOpen && selectedPlaylist && (
+          <EditPlaylistModal
+            refetch={refetch}
+            isOpen={editModalOpen}
+            onClose={() => {
+              setEditModalOpen(false);
+              setSelectedPlaylist(null);
+            }}
+            playlist={selectedPlaylist}
+          />
+        )}
+
         {playlists.length > 0 ? (
           <Card>
             <CardContent className="p-0">
@@ -154,9 +205,7 @@ const PlaylistPage: React.FC = () => {
                             </div>
                           </div>
                         </td>
-                        <td className="p-4">
-                          {playlist.selectedVideos?.length ?? 0}
-                        </td>
+                        <td className="p-4">{playlist.videos?.length ?? 0}</td>
                         <td className="p-4">{playlist.category}</td>
                         <td className="p-4">
                           <span
@@ -184,13 +233,23 @@ const PlaylistPage: React.FC = () => {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handlePlayPlaylist(playlist)}
+                              >
                                 <Play className="w-4 h-4 mr-2" />
                                 Play
                               </DropdownMenuItem>
-                              <DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleEditPlaylist(playlist)}
+                              >
                                 <Edit2 className="w-4 h-4 mr-2" />
                                 Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleDelete(playlist)}
+                              >
+                                <Trash className="w-4 h-4 mr-2" />
+                                Delete
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>

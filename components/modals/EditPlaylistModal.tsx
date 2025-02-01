@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { X, Plus, Trash2, Search, ChevronDown, Loader2 } from "lucide-react";
 import { MdPlaylistAdd } from "react-icons/md";
 import { uploadToCloudinary } from "@/app/lib/action/user";
@@ -10,18 +10,12 @@ import {
 } from "@/app/lib/action/videoprocessing";
 import { uploadToS3 } from "@/app/lib/action/s3";
 import {
-  useBulkUpdateVideosPlaylistMutation,
   useGetVideoByQueryQuery,
   useUploadVideoMutation,
 } from "@/redux/services/channel/videoApi";
 import { useGetChannelByEmailQuery } from "@/redux/services/channel/channelApi";
 import { getUserFromCookies } from "@/app/lib/action/auth";
-import { setupListeners } from "@reduxjs/toolkit/query";
-import {
-  useCreateInitialPlaylistMutation,
-  useCreatePlaylistMutation,
-  useUpdatePlaylistVideosMutation,
-} from "@/redux/services/channel/plalylistApi";
+import { useEditPlaylistMutation } from "@/redux/services/channel/plalylistApi";
 
 // Types
 interface Video {
@@ -31,10 +25,26 @@ interface Video {
   duration: string;
 }
 
-interface PlaylistCreationModalProps {
+interface EditPlaylistModalProps {
   isOpen: boolean;
   onClose: () => void;
   refetch: any;
+  playlist: {
+    _id: string;
+    name: string;
+    description: string;
+    visibility: string;
+    category: string;
+    tags: string[];
+    thumbnailUrl: string;
+    videos: Array<{
+      videoId: string;
+      videoUrl: string;
+      next: string | null;
+      prev: string | null;
+    }>;
+    status: string;
+  };
 }
 
 interface ValidationErrors {
@@ -69,32 +79,77 @@ interface VideoUpload {
 const uploadThumbnail = async (file: File): Promise<string> => {
   const formData = new FormData();
   formData.append("thumbnail", file);
-
   const imageurl = await uploadToCloudinary(file);
-
   return imageurl;
 };
 
-const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
-  isOpen = true,
+const EditPlaylistModal: React.FC<EditPlaylistModalProps> = ({
+  isOpen,
   onClose,
   refetch,
+  playlist,
 }) => {
+  const [isClient, setIsClient] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [users, setUsers] = useState<any>(null);
   const [customCategory, setCustomCategory] = useState("");
   const [formData, setFormData] = useState({
-    name: "",
-    description: "",
-    visibility: "public",
-    category: "",
-    tags: [] as string[],
+    name: playlist.name,
+    description: playlist.description,
+    visibility: playlist.visibility,
+    category: playlist.category,
+    tags: playlist.tags || [],
     thumbnailFile: null as File | null,
-    thumbnailUrl: "",
+    thumbnailUrl: playlist.thumbnailUrl,
     videoUrls: [] as string[],
     subtitles: false,
     endScreen: false,
   });
+  const [selectedVideos, setSelectedVideos] = useState<Video[]>([]);
+
+  const [previewThumbnail, setPreviewThumbnail] = useState<string | null>(
+    playlist.thumbnailUrl
+  );
+
+  const [videoUploads, setVideoUploads] = useState<VideoUpload[]>([
+    { id: 1, file: null },
+  ]);
+
+  useEffect(() => {
+    setIsClient(true);
+    const fetchData = async () => {
+      const decodeUser = await getUserFromCookies();
+      setUsers(decodeUser.user);
+
+      // Initialize selected videos and ordered videos
+      const initialSelectedVideos =
+        playlist?.videos?.map((v: any) => ({
+          _id: v.videoId,
+          title: v.videoId?.title || v.videoId,
+          thumbnailUrl: v.videoId?.thumbnailUrl || "/placeholder-image.png",
+          duration: v.videoId?.metadata?.duration || "",
+        })) || [];
+      console.log(initialSelectedVideos, "intial video");
+      setSelectedVideos(initialSelectedVideos);
+      setOrderedVideos(playlist?.videos || []);
+    };
+    fetchData();
+  }, [playlist]);
+
+  const [isVideoSearchOpen, setIsVideoSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [errors, setErrors] = useState<ValidationErrors>({});
+  const [categories] = useState([
+    "Technology",
+    "Health",
+    "Education",
+    "Finance",
+  ]);
+  const [selectedCategory, setSelectedCategory] = useState(playlist.category);
+  const [orderedVideos, setOrderedVideos] = useState<VideoNode[]>(
+    playlist.videos
+  );
+  console.log(playlist, "playlist got ");
 
   useEffect(() => {
     const fetchData = async () => {
@@ -104,53 +159,64 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
     fetchData();
   }, []);
 
-  const [videoUploads, setVideoUploads] = useState<VideoUpload[]>([
-    { id: 1, file: null },
-  ]);
+  const handleRemoveVideo = useCallback((videoId: string) => {
+    // Remove the video from selected videos
+    setSelectedVideos((prev) => prev.filter((v) => v._id !== videoId));
 
-  const [selectedVideos, setSelectedVideos] = useState<Video[]>([]);
-  const [isVideoSearchOpen, setIsVideoSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<Video[]>([]);
-  const [errors, setErrors] = useState<ValidationErrors>({});
-  const [categories, setCategories] = useState([
-    "Technology",
-    "Health",
-    "Education",
-    "Finance",
-  ]);
-  const [selectedCategory, setSelectedCategory] = useState("");
-  const [orderedVideos, setOrderedVideos] = useState<VideoNode[]>([]);
+    // Update the ordered videos list
+    setOrderedVideos((prev) => {
+      // Create a copy of the current list
+      const updatedList = [...prev];
+      const index = updatedList.findIndex((node) => node.videoId === videoId);
 
-  // Get channel data
-  const { data: channelData, isError: channelError } =
-    useGetChannelByEmailQuery(users?.email ?? "", { skip: !users?.email });
-  const {
-    data: videos,
-    isLoading,
-    error,
-  } = useGetVideoByQueryQuery(
+      if (index === -1) return updatedList;
+
+      // Create updated copies of adjacent nodes
+      if (index > 0) {
+        updatedList[index - 1] = {
+          ...updatedList[index - 1],
+          next: updatedList[index].next,
+        };
+      }
+
+      if (index < updatedList.length - 1) {
+        updatedList[index + 1] = {
+          ...updatedList[index + 1],
+          prev: updatedList[index].prev,
+        };
+      }
+
+      // Remove the specific node
+      return updatedList.filter((node) => node.videoId !== videoId);
+    });
+  }, []);
+
+  const { data: channelData } = useGetChannelByEmailQuery(users?.email ?? "", {
+    skip: !users?.email,
+  });
+
+  const { data: videos, isLoading } = useGetVideoByQueryQuery(
     { query: searchQuery ? { title: searchQuery } : {} },
     { skip: !searchQuery }
   );
 
-  const [createInitialPlaylist] = useCreateInitialPlaylistMutation();
-  const [updatePlaylistVideos] = useUpdatePlaylistVideosMutation();
-  const [bulkUpdateVideosPlaylist] = useBulkUpdateVideosPlaylistMutation();
   const [uploadVideo] = useUploadVideoMutation();
+  const [updatePlaylist] = useEditPlaylistMutation();
+  const [uploadedVideos, setUploadedVideos] = useState<Set<string>>(new Set());
 
-  const processAndUploadVideo = async (file: File, playlistId: string) => {
+  const processAndUploadVideo = async (file: File) => {
+    const fileId = `${file.name}-${file.size}-${file.lastModified}`;
+    if (uploadedVideos.has(fileId)) {
+      return null;
+    }
     try {
-      // Convert file to base64
       const buffer = await file.arrayBuffer();
       const base64Video = Buffer.from(buffer).toString("base64");
       const videoId = Date.now().toString();
 
-      // Process video
       const { outputPath, metadata } = await processVideo(base64Video, videoId);
       const processedVideoBuffer = await readAndProcessVideo(outputPath);
 
-      // Upload to S3
       let s3Key = "";
       if (channelData?._id) {
         s3Key = `videos/${channelData._id}/${videoId}/processed.mp4`;
@@ -163,9 +229,9 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
         s3Key,
         "video/mp4"
       );
+
       const uniqueName = `${formData.name}-${Date.now()}`;
 
-      // Prepare video data
       const videoData = {
         channelId: channelData._id,
         title: uniqueName,
@@ -190,60 +256,19 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
         thumbnailUrl: formData.thumbnailUrl,
         tags: formData.tags,
         category: formData.category,
-        selectedPlaylist: [playlistId],
+        selectedPlaylist: [playlist._id],
         videourl: fileUrl,
       };
 
-      // Upload video data
-      const response = await uploadVideo({
-        ...videoData,
-        subtitles: formData.subtitles,
-        endScreen: formData.endScreen,
-      }).unwrap();
+      const response = await uploadVideo(videoData).unwrap();
+      await cleanup([outputPath]);
+      setUploadedVideos((prev) => new Set(prev).add(fileId));
 
-      const newVideo: Video = {
-        _id: response._id || "",
-        title: response.title || file.name,
-        thumbnailUrl: formData.thumbnailUrl,
-        duration: metadata.duration || "0:00",
-      };
-
-      console.log(newVideo, "new uploaded video");
-      setSelectedVideos((prevVideos) => [...prevVideos, newVideo]);
-      console.log(selectedVideos, "videoes  ");
-
-      // Cleanup
-      // await cleanup([outputPath]);
-
-      // Return both the video URL and the video ID
-      return {
-        videoUrl: fileUrl,
-        videoId: response._id,
-        title: response.title || file.name,
-      };
+      return { videoUrl: fileUrl, videoId: response._id };
     } catch (error) {
       console.error("Error processing and uploading video:", error);
       throw error;
     }
-  };
-
-  const updateUploadProgress = (
-    index: number,
-    progress: Partial<UploadProgress>
-  ) => {
-    setVideoUploads((prev) => {
-      const newUploads = [...prev];
-      if (newUploads[index]) {
-        newUploads[index] = {
-          ...newUploads[index],
-          uploadProgress: {
-            ...newUploads[index].uploadProgress,
-            ...progress,
-          } as UploadProgress,
-        };
-      }
-      return newUploads;
-    });
   };
 
   const handleInputChange = (
@@ -266,7 +291,6 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
 
   const addCustomCategory = () => {
     if (customCategory.trim() !== "") {
-      setCategories((prev) => [...prev, customCategory.trim()]);
       setSelectedCategory(customCategory.trim());
       setFormData((prev) => ({ ...prev, category: customCategory.trim() }));
       setCustomCategory("");
@@ -274,8 +298,8 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
     }
   };
 
-  const maxFileSize = 400 * 1024 * 1024; // 400MB
-  const maxThumbnailSize = 10 * 1024 * 1024; // 10MB
+  const maxFileSize = 400 * 1024 * 1024;
+  const maxThumbnailSize = 10 * 1024 * 1024;
 
   const handleFileChange = (
     e: React.ChangeEvent<HTMLInputElement>,
@@ -300,10 +324,13 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
     setErrors((prev) => ({ ...prev, file: undefined }));
   };
 
-  const handleThumbnailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleThumbnailChange = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const maxThumbnailSize = 10 * 1024 * 1024;
     if (file.size > maxThumbnailSize) {
       setErrors((prev) => ({
         ...prev,
@@ -312,8 +339,23 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
       return;
     }
 
-    setFormData((prev) => ({ ...prev, thumbnailFile: file }));
-    setErrors((prev) => ({ ...prev, ThumbnailFile: undefined }));
+    try {
+      const previewUrl = URL.createObjectURL(file);
+      setPreviewThumbnail(previewUrl);
+
+      setFormData((prev) => ({
+        ...prev,
+        thumbnailFile: file,
+      }));
+
+      setErrors((prev) => ({ ...prev, ThumbnailFile: undefined }));
+    } catch (error) {
+      console.error("Thumbnail preview error:", error);
+      setErrors((prev) => ({
+        ...prev,
+        ThumbnailFile: "Failed to process thumbnail",
+      }));
+    }
   };
 
   const handleTagInput = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -374,38 +416,14 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
     setSearchQuery("");
   };
 
-  const removeSelectedVideo = (videoId: string) => {
-    setSelectedVideos((prev) => prev.filter((v) => v._id !== videoId));
-
-    setOrderedVideos((prev) => {
-      const index = prev.findIndex((node) => node.videoId === videoId);
-      if (index === -1) return prev;
-
-      const newList = [...prev];
-
-      // Update connections for adjacent nodes
-      if (index > 0) {
-        newList[index - 1].next = newList[index].next;
-      }
-      if (index < newList.length - 1) {
-        newList[index + 1].prev = newList[index].prev;
-      }
-
-      return newList.filter((node) => node.videoId !== videoId);
-    });
-  };
-
   const validateFile = (file: File): string | null => {
     const allowedTypes = ["video/mp4", "video/quicktime", "video/x-msvideo"];
-
     if (!allowedTypes.includes(file.type)) {
       return "Please select a valid video file (MP4, MOV, or AVI)";
     }
-
     if (file.size > maxFileSize) {
       return `File size should be less than ${maxFileSize / (1024 * 1024)}MB`;
     }
-
     return null;
   };
 
@@ -426,21 +444,8 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
       errors.description = "Description must be less than 400 characters";
     }
 
-    if (
-      videoUploads.every((upload) => !upload.file) &&
-      selectedVideos.length === 0
-    ) {
-      errors.file = "Please select at least one video";
-    }
-
-    if (!formData.thumbnailFile) {
-      errors.ThumbnailFile = "Please select a thumbnail";
-    }
-
     return errors;
   };
-
-  const [createPlaylist] = useCreatePlaylistMutation();
 
   const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
@@ -450,6 +455,25 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
       setCustomCategory("");
       setErrors((prev) => ({ ...prev, category: undefined }));
     }
+  };
+
+  const updateUploadProgress = (
+    index: number,
+    progress: Partial<UploadProgress>
+  ) => {
+    setVideoUploads((prev) => {
+      const newUploads = [...prev];
+      if (newUploads[index]) {
+        newUploads[index] = {
+          ...newUploads[index],
+          uploadProgress: {
+            ...newUploads[index].uploadProgress,
+            ...progress,
+          } as UploadProgress,
+        };
+      }
+      return newUploads;
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -463,34 +487,14 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
 
     setIsSubmitting(true);
     try {
-      // Upload thumbnail first
-      let thumbnailUrl = "";
+      // Handle thumbnail upload
+      let thumbnailUrl = formData.thumbnailUrl;
       if (formData.thumbnailFile) {
         thumbnailUrl = await uploadThumbnail(formData.thumbnailFile);
       }
 
-      const initialPlaylistData = {
-        channelId: channelData?._id.toString(),
-        name: formData.name,
-        description: formData.description,
-        visibility: formData.visibility as "public" | "private" | "unlisted",
-        category: formData.category,
-        tags: formData.tags,
-        thumbnailUrl,
-        videos: [],
-        status: "active",
-      };
-
-      const playlistResponse = await createInitialPlaylist(
-        initialPlaylistData
-      ).unwrap();
-      const playlistId = playlistResponse._id;
-
-      // Track all videos (both uploaded and selected)
-      const uploadedVideoNodes: VideoNode[] = [];
-      const allVideoIds: string[] = [];
-
       // Process and upload new videos
+      const uploadedVideoNodes: VideoNode[] = [];
       for (let i = 0; i < videoUploads.length; i++) {
         const upload = videoUploads[i];
         if (upload.file) {
@@ -500,30 +504,37 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
           });
 
           try {
-            const result = await processAndUploadVideo(upload.file, playlistId);
-            if (!result.videoId || !result.videoUrl) {
-              throw new Error("Failed to get video ID or URL");
+            const result = await processAndUploadVideo(upload.file);
+            if (result) {
+              if (!result.videoId || !result.videoUrl) {
+                throw new Error("Failed to get video ID or URL");
+              }
+
+              const newNode: VideoNode = {
+                videoId: result.videoId,
+                videoUrl: result.videoUrl,
+                next: null,
+                prev: null,
+              };
+              uploadedVideoNodes.push(newNode);
+
+              setSelectedVideos((prev: any) => [
+                ...prev,
+                {
+                  _id: result.videoId,
+                  thumbnailUrl: result.videoUrl,
+                  duration: "",
+                },
+              ]);
+
+              updateUploadProgress(i, {
+                progress: 100,
+                status: "complete",
+                url: result.videoUrl,
+              });
             }
-
-            // Add to uploadedVideoNodes for ordering
-            const newNode: VideoNode = {
-              videoId: result.videoId,
-              videoUrl: result.videoUrl,
-              next: null,
-              prev: null,
-            };
-            uploadedVideoNodes.push(newNode);
-
-            // Add to allVideoIds for bulk update
-            allVideoIds.push(result.videoId);
-
-            updateUploadProgress(i, {
-              progress: 100,
-              status: "complete",
-              url: result.videoUrl,
-            });
           } catch (error) {
-            console.error("Error processing video:", error);
+            console.error("Error uploading video:", error);
             updateUploadProgress(i, {
               progress: 0,
               status: "error",
@@ -534,87 +545,74 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
         }
       }
 
-      // Add selected video IDs to allVideoIds
-      const selectedVideoIds = selectedVideos
-        .map((video) => video._id)
-        .filter((id) => id);
-      allVideoIds.push(...selectedVideoIds);
-
-      // Perform bulk update with all video IDs
-      if (allVideoIds.length > 0) {
-        console.log("Updating playlist with all video IDs:", allVideoIds);
-        await bulkUpdateVideosPlaylist({
-          videoIds: allVideoIds,
-          playlistId,
-        }).unwrap();
-      }
-
-      // Create combined ordered list
-      const combinedVideos: VideoNode[] = [];
-
-      // Add uploaded videos with ordering
-      uploadedVideoNodes.forEach((node, index) => {
-        if (index > 0) {
-          node.prev = uploadedVideoNodes[index - 1].videoId;
-        }
-        if (index < uploadedVideoNodes.length - 1) {
-          node.next = uploadedVideoNodes[index + 1].videoId;
-        }
-        combinedVideos.push(node);
-      });
-
-      console.log(uploadedVideoNodes, "uploadvideoNodes");
-
-      // Add selected videos with ordering
-      selectedVideos.forEach((video, index) => {
-        const totalIndex = uploadedVideoNodes.length + index;
-        const node: VideoNode = {
-          videoId: video._id,
-          videoUrl: video.thumbnailUrl,
-          prev: totalIndex > 0 ? combinedVideos[totalIndex - 1].videoId : null,
+      // Create new array combining existing and uploaded videos
+      const combinedVideos: VideoNode[] = [
+        ...orderedVideos.map((video) => ({
+          videoId: video.videoId,
+          videoUrl: video.videoUrl,
           next: null,
-        };
+          prev: null,
+        })),
+        ...uploadedVideoNodes,
+      ];
 
-        if (totalIndex > 0) {
-          combinedVideos[totalIndex - 1].next = video._id;
-        }
+      // Update prev/next references
+      const updatedVideos = combinedVideos.map((video, index) => ({
+        ...video,
+        prev: index > 0 ? combinedVideos[index - 1].videoId : null,
+        next:
+          index < combinedVideos.length - 1
+            ? combinedVideos[index + 1].videoId
+            : null,
+      }));
 
-        combinedVideos.push(node);
-      });
-
-      console.log(combinedVideos, "length of combined video");
-
-      // Update playlist with final video order
-      if (combinedVideos.length > 0) {
-        await updatePlaylistVideos({
-          playlistId,
-          videos: combinedVideos,
-        }).unwrap();
+      if (!channelData?._id) {
+        throw new Error("Channel ID not found");
       }
 
+      const updateData = {
+        playlistId: playlist._id,
+        updates: {
+          name: formData.name,
+          description: formData.description,
+          visibility: formData.visibility as "public" | "private" | "unlisted",
+          category: formData.category,
+          tags: formData.tags,
+          thumbnailUrl,
+          videos: updatedVideos,
+        },
+      };
+
+      console.log(updateData, "data before submiting");
+
+      const response = await updatePlaylist(updateData).unwrap();
+      console.log("Update response:", response);
       refetch();
       onClose();
     } catch (error) {
-      console.log("Error creating playlist:", error);
+      console.log(error, "errors of edit");
       setErrors((prev) => ({
         ...prev,
-        general: `Failed to create playlist. Please try again.${error}`,
+        general: "Failed to update playlist. Please try again.",
       }));
+      console.error("Error updating playlist:", error);
     } finally {
       setIsSubmitting(false);
     }
   };
-
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center overflow-y-auto">
+    <div
+      className="fixed inset-0 bg-black/80 flex items-center justify-center overflow-y-auto"
+      suppressHydrationWarning
+    >
       <div className="bg-white rounded-lg w-full max-w-5xl mx-4 p-5">
         <form onSubmit={handleSubmit} className="p-6">
           {/* Header */}
           <div className="flex justify-between items-center mb-3">
             <MdPlaylistAdd className="text-xl font-bold" />
-            <h2 className="text-xl font-semibold">Create new playlist</h2>
+            <h2 className="text-xl font-semibold">Edit playlist</h2>
             <button
               type="button"
               onClick={onClose}
@@ -624,7 +622,7 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
             </button>
           </div>
 
-          <div className="flex gap-6 ">
+          <div className="flex gap-6">
             {/* Form Fields */}
             <div className="space-y-2">
               {/* Name Input */}
@@ -766,14 +764,20 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
                     <option value="unlisted">Unlisted</option>
                   </select>
                 </div>
-                {/* thumbainail section */}
               </div>
-              <div className=" w-full">
-                <h2 className="font-medium">
-                  add thumbnail<span className="text-red-500">*</span>
-                </h2>
-                <div className="border-2 border-dashed rounded-lg p-6 ">
+
+              {/* Thumbnail Section */}
+              <div className="w-full">
+                <h2 className="font-medium">Current Thumbnail</h2>
+                <div className="border-2 border-dashed rounded-lg p-6">
                   <div className="text-center">
+                    {previewThumbnail && (
+                      <img
+                        src={previewThumbnail}
+                        alt="Current thumbnail"
+                        className="w-32 h-32 object-cover mx-auto mb-4 rounded"
+                      />
+                    )}
                     <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-2">
                       <svg
                         className="w-6 h-6 text-purple-600"
@@ -790,7 +794,7 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
                       </svg>
                     </div>
                     <div className="text-sm text-gray-600 mb-4">
-                      Upload thumbnail
+                      Update thumbnail
                       <br />
                       <span className="text-xs text-gray-500">
                         Maximum file size: 10 MB
@@ -807,7 +811,7 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
                       htmlFor="thumbnail-upload"
                       className="px-4 py-2 bg-purple-600 text-white rounded-lg cursor-pointer hover:bg-purple-700"
                     >
-                      Choose file
+                      Choose new thumbnail
                     </label>
                     {errors.ThumbnailFile && (
                       <p className="mt-2 text-sm text-red-500">
@@ -823,16 +827,16 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
                 </div>
               </div>
             </div>
-            {/* Thumbnail Upload */}
-            <div className="my-div w-1/2">
-              {/* Video Selection Section */}
-              <div className="space-y-4 ">
-                <h3 className="font-medium mt-5">Add Videos</h3>
 
-                {/* Existing Video Search */}
-                <div className="relative ">
+            {/* Video Management Section */}
+            <div className="w-1/2">
+              <div className="space-y-4">
+                <h3 className="font-medium mt-5">Manage Videos</h3>
+
+                {/* Video Search */}
+                <div className="relative">
                   <div
-                    className="border rounded-lg p-4 cursor-pointer "
+                    className="border rounded-lg p-4 cursor-pointer"
                     onClick={() => setIsVideoSearchOpen(!isVideoSearchOpen)}
                   >
                     <div className="flex items-center justify-between">
@@ -840,7 +844,7 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
                         <Search size={20} className="text-gray-400 mr-2" />
                         <input
                           type="text"
-                          placeholder="Search existing videos..."
+                          placeholder="Search videos to add..."
                           className="outline-none"
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
@@ -851,7 +855,7 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Search Results Dropdown */}
+                  {/* Search Results */}
                   {isVideoSearchOpen && (
                     <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
                       {isLoading ? (
@@ -866,7 +870,7 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
                             onClick={() => handleVideoSelection(video)}
                           >
                             <img
-                              src="/assets/avathar/avathar.png"
+                              src={video.thumbnailUrl}
                               alt={video.title}
                               className="w-20 h-12 object-cover rounded"
                             />
@@ -887,27 +891,32 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
                   )}
                 </div>
 
-                {/* Selected Videos Display */}
+                {/* Selected Videos */}
                 {selectedVideos.length > 0 && (
                   <div className="space-y-2">
-                    <h4 className="text-sm font-medium">Selected Videos:</h4>
+                    <h4 className="text-sm font-medium">Video Order:</h4>
                     <div className="space-y-2">
-                      {selectedVideos.map((video) => (
+                      {selectedVideos.map((video, index) => (
                         <div
-                          key={video._id}
+                          key={`${video._id}-${index}`}
                           className="flex items-center justify-between bg-gray-50 p-2 rounded"
                         >
                           <div className="flex items-center space-x-3">
-                            <img
-                              src={video.thumbnailUrl}
-                              alt={video.title}
-                              className="w-20 h-12 object-cover rounded"
-                            />
+                            <span className="text-gray-500">{index + 1}.</span>
+                            {video.thumbnailUrl && (
+                              <img
+                                src={
+                                  video.thumbnailUrl || "/placeholder-image.png"
+                                }
+                                alt={video.title}
+                                className="w-20 h-12 object-cover rounded"
+                              />
+                            )}
                             <span>{video.title}</span>
                           </div>
                           <button
                             type="button"
-                            onClick={() => removeSelectedVideo(video._id)}
+                            onClick={() => handleRemoveVideo(video._id)}
                             className="text-red-500 hover:text-red-700"
                           >
                             <Trash2 size={20} />
@@ -918,7 +927,7 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
                   </div>
                 )}
 
-                {/* Video Upload Slots */}
+                {/* Add New Videos Section */}
                 {videoUploads.map((upload, index) => (
                   <div
                     key={upload.id}
@@ -951,13 +960,27 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
                           </svg>
                         </div>
                         <div className="text-sm text-gray-600">
-                          Upload video {index + 1}
+                          Upload new video {index + 1}
                           <br />
                           <span className="text-xs text-gray-500">
                             Maximum file size: 500 MB
                           </span>
                         </div>
                       </div>
+                      {upload.uploadProgress && (
+                        <div className="mt-4">
+                          {upload.uploadProgress.status === "error" && (
+                            <div className="text-red-500">
+                              {upload.uploadProgress.error}
+                            </div>
+                          )}
+                          {upload.uploadProgress.status === "complete" && (
+                            <div className="text-green-500">
+                              Upload complete
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       <input
                         type="file"
@@ -1028,15 +1051,16 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
             <button
               type="submit"
               disabled={isSubmitting}
+              onClick={handleSubmit}
               className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-purple-400 flex items-center"
             >
               {isSubmitting ? (
                 <>
                   <Loader2 size={20} className="animate-spin mr-2" />
-                  Creating...
+                  Editing...
                 </>
               ) : (
-                "Create Playlist"
+                "Edit Playlist"
               )}
             </button>
           </div>
@@ -1050,4 +1074,4 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
   );
 };
 
-export default PlaylistCreationModal;
+export default EditPlaylistModal;

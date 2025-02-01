@@ -81,6 +81,7 @@ export async function middleware(req: NextRequest) {
 
   // Role-based redirection for dashboards
   if (refreshToken && req.nextUrl.pathname.startsWith("/dashboard")) {
+    
     if (
       userRole === "streamer" &&
       !req.nextUrl.pathname.startsWith("/dashboard/streamer")

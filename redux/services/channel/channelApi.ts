@@ -40,6 +40,14 @@ export const httpChannelApi = createApi({
         };
       },
     }),
+    getChannelByChannelId: builder.query<getChannelResponse, string>({
+      query: (id) => {
+        return {
+          url: `/channels/channel/id/${id}`,
+          method: "GET",
+        };
+      },
+    }),
     subscribeToChannel: builder.mutation({
       query: ({ userId, channelId }) => ({
         url: "/channels/subscribe",
@@ -70,6 +78,7 @@ export const {
   useGetChannelByEmailQuery,
   useGetSubscriberCountQuery,
   useGetSubscriptionStatusQuery,
+  useGetChannelByChannelIdQuery,
   useSubscribeToChannelMutation,
   useUnsubscribeFromChannelMutation,
   useGetChannelByIdQuery,

@@ -14,13 +14,17 @@ import VideoUploadFlow from "@/components/modals/videoUploadModal";
 import { getUserFromCookies } from "@/app/lib/action/auth";
 import { useGetChannelByEmailQuery } from "@/redux/services/channel/channelApi";
 import {
+  useDeleteVideoMutation,
   useEditVideoMutation,
   useGetAllVideosQuery,
 } from "@/redux/services/channel/videoApi";
 import EditVideoFlow from "@/components/modals/EditVideoUpload";
 import toast from "react-hot-toast";
+import { useRouter } from "next/navigation";
+import { deleteFromS3 } from "@/app/lib/action/s3";
 
 const VideoListingPage = () => {
+  const router = useRouter();
   const [users, setUsers] = useState<any>(null);
   const {
     data: videos,
@@ -47,6 +51,7 @@ const VideoListingPage = () => {
     isLoading,
     isError,
   } = useGetChannelByEmailQuery(users?.email, { skip: !users?.email });
+  const [deleteVideo] = useDeleteVideoMutation();
 
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState<any>(null);
@@ -54,6 +59,13 @@ const VideoListingPage = () => {
   const handleEditClick = (video: any) => {
     setSelectedVideo(video);
     setShowEditModal(true);
+  };
+
+  const handleDelete = async (video: any) => {
+    console.log(video, "video in the delete");
+    await deleteFromS3(video.s3Key);
+    deleteVideo({ videoId: video._id });
+    refetch();
   };
 
   const [editVideo, { isLoading: editLoading, error }] = useEditVideoMutation();
@@ -171,7 +183,14 @@ const VideoListingPage = () => {
           <div key={index} className="border rounded-lg p-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-medium">{video.title}</h3>
+                <h3
+                  className="font-medium"
+                  onClick={() =>
+                    router.push(`/dashboard/streamer/main/videoes/${video._id}`)
+                  }
+                >
+                  {video.title}
+                </h3>
                 <p className="text-sm text-gray-500">
                   {video.metadata?.mimeType || "Unknown type"}
                 </p>
@@ -234,7 +253,7 @@ const VideoListingPage = () => {
                     </button>
                     <button
                       className="p-2 rounded-full hover:bg-gray-100"
-                      onClick={() => console.log("Delete video", video.id)}
+                      onClick={() => handleDelete(video)}
                     >
                       <Trash2 className="w-5 h-5 text-red-500" />
                     </button>
