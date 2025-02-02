@@ -48,6 +48,18 @@ export const httpChannelApi = createApi({
         };
       },
     }),
+
+    editChannelById: builder.mutation<
+      getChannelResponse,
+      { channelId: string; channelData: any }
+    >({
+      query: ({ channelId, channelData }) => ({
+        url: `/channels/${channelId}`,
+        method: "PUT",
+        body: channelData,
+      }),
+    }),
+
     subscribeToChannel: builder.mutation({
       query: ({ userId, channelId }) => ({
         url: "/channels/subscribe",
@@ -82,4 +94,5 @@ export const {
   useSubscribeToChannelMutation,
   useUnsubscribeFromChannelMutation,
   useGetChannelByIdQuery,
+  useEditChannelByIdMutation,
 } = httpChannelApi;

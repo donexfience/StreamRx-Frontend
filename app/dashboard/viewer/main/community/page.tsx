@@ -1,0 +1,143 @@
+"use client";
+import { ChatSection } from "@/components/chats/chatArea";
+import { MembersList } from "@/components/chats/Memberlist";
+import { useEffect, useState } from "react";
+import {
+  Hash,
+  Music,
+  Users,
+  Crown,
+  Radio,
+  Heart,
+  Bell,
+  GamepadIcon,
+  Settings,
+  Twitch,
+  Youtube,
+} from "lucide-react";
+import { getUserFromCookies } from "@/app/lib/action/auth";
+import { useGetAllSubscribedChannelByUserIdQuery } from "@/redux/services/community/communityApi";
+import { useGetUserQuery } from "@/redux/services/user/userApi";
+
+interface Channel {
+  label: string;
+  icon: any;
+  imageUrl: string;
+  category: string;
+  channelId: string; // Added to store the actual channel ID
+}
+
+export default function Chat() {
+  const [activeChannel, setActiveChannel] = useState<Channel | null>(null);
+  const [users, setUsers] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const decodeUser = await getUserFromCookies();
+        setUsers(decodeUser.user);
+      } catch (error) {
+        console.error("Error fetching user data:", error);
+      }
+    };
+    fetchData();
+  }, []);
+
+  const { data: userData } = useGetUserQuery(
+    { email: users?.email },
+    {
+      skip: !users?.email,
+    }
+  );
+
+  const { data: channelData } = useGetAllSubscribedChannelByUserIdQuery(
+    { userId: userData?.user._id || "" },
+    {
+      skip: !userData?.user._id,
+    }
+  );
+
+  const subscribedChannels: Channel[] =
+    channelData?.data?.map((channel: any) => ({
+      label: channel.channelId.channelName,
+      icon: channel.channelId.integrations.twitch
+        ? Twitch
+        : channel.channelId.integrations.youtube
+        ? Youtube
+        : channel.channelId.integrations.discord
+        ? Youtube
+        : Hash,
+      imageUrl: channel.channelId.channelProfileImageUrl,
+      category: channel.channelId.category[0],
+      channelId: channel.channelId._id, // Store the actual channel ID
+    })) || [];
+
+  // Set first channel as active by default if none selected
+  useEffect(() => {
+    if (subscribedChannels.length > 0 && !activeChannel) {
+      setActiveChannel(subscribedChannels[0]);
+    }
+  }, [subscribedChannels]);
+
+  return (
+    <div className="flex h-screen bg-gray-950 text-gray-300 w-full">
+      {/* Sidebar */}
+      <div className="w-80 h-full bg-gradient-to-b from-gray-900 to-gray-800 shadow-lg p-4 flex flex-col border-r border-gray-700">
+        <h2 className="text-xl font-bold text-white mb-6">Channels</h2>
+
+        {/* Subscribed Channels */}
+        {subscribedChannels.length > 0 && (
+          <div className="space-y-1">
+            <h3 className="text-sm font-semibold text-gray-400 px-4 mb-2">
+              Subscribed Channels
+            </h3>
+            {subscribedChannels.map((channel, index) => (
+              <button
+                key={`subscribed-${index}`}
+                onClick={() => setActiveChannel(channel)}
+                className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300 w-full 
+                ${
+                  activeChannel?.channelId === channel.channelId
+                    ? "bg-gray-700 text-white shadow-md border-l-4 border-purple-500"
+                    : "hover:bg-gray-800 text-gray-400 hover:scale-105"
+                }`}
+              >
+                {channel.imageUrl ? (
+                  <img
+                    src={channel.imageUrl}
+                    alt={channel.label}
+                    className="h-6 w-6 rounded-full"
+                  />
+                ) : (
+                  <channel.icon className="h-5 w-5" />
+                )}
+                <div className="flex flex-col items-start">
+                  <span className="text-sm font-medium">{channel.label}</span>
+                  <span className="text-xs text-gray-500">
+                    {channel.category}
+                  </span>
+                </div>
+                {activeChannel?.channelId === channel.channelId && (
+                  <Settings className="h-4 w-4 ml-auto opacity-70 animate-pulse" />
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Chat Section */}
+      <div className="flex-1 flex flex-col bg-gray-950 border-l border-r border-gray-800 backdrop-blur-lg bg-opacity-80 p-4">
+        <ChatSection
+          currentChannel={activeChannel}
+          currentUser={userData?.user}
+        />
+      </div>
+
+      {/* Members List */}
+      <div className="w-72 h-full bg-gradient-to-b from-gray-900 to-gray-800 shadow-lg p-4 border-l border-gray-700">
+        {/* <MembersList channelId={activeChannel?.channelId} /> */}
+      </div>
+    </div>
+  );
+}

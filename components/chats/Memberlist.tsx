@@ -5,39 +5,43 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Link, Settings } from "lucide-react";
 
-const members = [
-  {
-    name: "KillEveryone",
-    avatar: "/placeholder.svg?height=40&width=40",
-    status: "online",
-  },
-  {
-    name: "Oreo",
-    avatar: "/placeholder.svg?height=40&width=40",
-    status: "online",
-  },
-  {
-    name: "Xanac",
-    avatar: "/placeholder.svg?height=40&width=40",
-    status: "online",
-  },
-  {
-    name: "Popolusuncy",
-    avatar: "/placeholder.svg?height=40&width=40",
-    status: "offline",
-  },
-  {
-    name: "Jimmy Sullivan",
-    avatar: "/placeholder.svg?height=40&width=40",
-    status: "offline",
-  },
-];
+import { useEffect, useState } from "react";
+import { useSocket } from "@/hooks/useSocket";
+
+
+interface Member {
+  _id: string;
+  name: string;
+  avatar: string;
+  status: "online" | "offline";
+}
 
 export function MembersList() {
+  const {communitySocket} = useSocket();
+  const [members, setMembers] = useState<Member[]>([]);
+  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!communitySocket) return;
+
+    communitySocket.on("user-joined", ({ onlineUsers }) => {
+      setOnlineUsers(new Set(onlineUsers));
+    });
+
+    communitySocket.on("user-left", ({ onlineUsers }) => {
+      setOnlineUsers(new Set(onlineUsers));
+    });
+
+    return () => {
+      communitySocket.off("user-joined");
+      communitySocket.off("user-left");
+    };
+  }, [communitySocket]);
+
   return (
     <div className="w-60 border-l h-screen">
       <div className="h-12 border-b flex items-center justify-between px-4">
-        <h3 className="font-semibold">Members (16)</h3>
+        <h3 className="font-semibold">Members ({members.length})</h3>
         <Button variant="ghost" size="icon">
           <Settings className="h-4 w-4" />
         </Button>
@@ -58,7 +62,7 @@ export function MembersList() {
             <h4 className="text-sm font-medium">Members</h4>
             {members.map((member) => (
               <div
-                key={member.name}
+                key={member._id}
                 className="flex items-center gap-2 group px-2 py-1 rounded hover:bg-muted"
               >
                 <Avatar className="h-8 w-8">
@@ -68,7 +72,7 @@ export function MembersList() {
                 <span className="flex-1 text-sm">{member.name}</span>
                 <div
                   className={`h-2 w-2 rounded-full ${
-                    member.status === "online" ? "bg-green-500" : "bg-gray-300"
+                    onlineUsers.has(member._id) ? "bg-green-500" : "bg-gray-300"
                   }`}
                 />
               </div>

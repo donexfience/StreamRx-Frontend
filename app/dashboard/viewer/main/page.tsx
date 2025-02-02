@@ -12,7 +12,7 @@ const page: React.FC = () => {
         <ViewerNavbar />
         <MainContent />
       </div>
-      <div className="ml-60">
+      <div className="ml-52 overflow-hidden w-[calc(100vw-240px)]">
         <Popular />
       </div>
     </div>

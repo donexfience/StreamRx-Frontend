@@ -24,3 +24,32 @@ export interface APIUserResponse {
   socialLinks: SocialLink[];
   Phone_number: string;
 }
+
+export interface ChatMessage {
+  _id: string;
+  channelId: string;
+  senderId: {
+    _id: string;
+    name: string;
+    profileImage?: string;
+  };
+  content: string;
+  messageType: "text" | "image" | "video" | "file";
+  fileUrl?: string;
+  reactions: {
+    userId: string;
+    emoji: string;
+  }[];
+  replies: {
+    messageId: string;
+    userId: {
+      _id: string;
+      name: string;
+      profileImage?: string;
+    };
+    content: string;
+    createdAt: string;
+  }[];
+  createdAt: string;
+  updatedAt: string;
+}

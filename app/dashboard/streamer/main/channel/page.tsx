@@ -11,7 +11,10 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { getUserFromCookies } from "@/app/lib/action/auth";
-import { useGetChannelByEmailQuery } from "@/redux/services/channel/channelApi";
+import {
+  useEditChannelByIdMutation,
+  useGetChannelByEmailQuery,
+} from "@/redux/services/channel/channelApi";
 import { useGetAllPlaylistsQuery } from "@/redux/services/channel/plalylistApi";
 import { useGetVideoesBychannelIdQuery } from "@/redux/services/channel/videoApi";
 import EditChannelModal from "@/components/modals/EditChannelCreationModal";
@@ -112,7 +115,7 @@ function CarouselSection<T>({
             className="flex gap-4 transition-transform duration-300 ease-in-out"
             style={{ transform: `translateX(-${currentIndex * 272}px)` }}
           >
-            {items?.map((item, index) => (
+            {items?.map((item: any, index: any) => (
               <div key={index} className="flex-shrink-0">
                 {renderItem(item)}
               </div>
@@ -184,15 +187,6 @@ const StreamInterface: React.FC = () => {
     setIsEditModalOpen(true);
   };
 
-  const handleUpdateChannel = async (updatedData: ChannelData) => {
-    try {
-      console.log(updatedData, "channel want to update with this data");
-      setIsEditModalOpen(false);
-    } catch (error) {
-      console.error("Error updating channel:", error);
-    }
-  };
-
   useEffect(() => {
     const fetchData = async () => {
       const decodeUser = await getUserFromCookies();
@@ -205,9 +199,12 @@ const StreamInterface: React.FC = () => {
     data: channelData,
     isLoading: channelLoading,
     isError: channelError,
+    refetch,
   } = useGetChannelByEmailQuery(users?.email ?? "", {
     skip: !users?.email,
   });
+
+  const [editChannel] = useEditChannelByIdMutation();
 
   const {
     data: playlists,
@@ -251,6 +248,20 @@ const StreamInterface: React.FC = () => {
       </div>
     );
   }
+
+  const handleUpdateChannel = async (updatedData: ChannelData) => {
+    try {
+      console.log(updatedData, "channel want to update with this data");
+      await editChannel({
+        channelId: channelData?._id || "",
+        channelData: updatedData,
+      });
+      refetch();
+      setIsEditModalOpen(false);
+    } catch (error) {
+      console.error("Error updating channel:", error);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 ml-32 w-full">
@@ -399,8 +410,8 @@ const StreamInterface: React.FC = () => {
             {playlists?.data?.length > 0 ? (
               <CarouselSection
                 title="Popular Playlists"
-                items={playlists.data}
-                renderItem={(playlist) => (
+                items={playlists?.data}
+                renderItem={(playlist: any) => (
                   <div className="flex-shrink-0 w-64 bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-200 overflow-hidden">
                     <div className="aspect-video bg-gray-100 relative">
                       <img
@@ -470,11 +481,12 @@ const StreamInterface: React.FC = () => {
 
         {activeTab === "videos" && (
           <div>
-            {videos?.length > 0 ? (
+            {videos && videos?.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {videos.map((video: any) => (
-                  <VideoCard key={video.id} video={video} />
-                ))}
+                {Array.isArray(videos) &&
+                  videos.map((video: any) => (
+                    <VideoCard key={video.id} video={video} />
+                  ))}
               </div>
             ) : (
               <div className="bg-white rounded-lg p-8 text-center shadow-sm">

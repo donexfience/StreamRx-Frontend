@@ -165,6 +165,7 @@ export interface VideoData {
   engagement: VideoEngagement;
   channelName: string;
   subscribers: number;
+  length?: any;
 }
 
 export interface Comment {
@@ -340,6 +341,24 @@ export interface Playlist {
   videoIds: string[];
   status: "active" | "deleted";
   createdAt: string;
+  updatedAt: string;
+  length?: any;
+}
+
+export interface SubscriptionResponse {
+  success: boolean;
+  data: SubscriptionData[];
+  message: string;
+}
+
+interface SubscriptionData {
+  _id: string;
+  channelId: getChannelResponse;
+  userId: string;
+  __v: number;
+  createdAt: string;
+  notificationsEnabled: boolean;
+  status: string;
   updatedAt: string;
 }
 

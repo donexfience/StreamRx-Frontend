@@ -1,4 +1,4 @@
-'use client';
+"use client";
 import React from "react";
 import {
   LayoutGrid,
@@ -9,8 +9,10 @@ import {
   Bell,
   Settings,
   User,
+  LogOut,
 } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
+import { clearAuthCookie } from "@/app/lib/action/auth";
 
 export default function StreamerNavbar() {
   const router = useRouter();
@@ -18,11 +20,27 @@ export default function StreamerNavbar() {
 
   const navItems = [
     { icon: <LayoutGrid size={20} />, path: "/dashboard", label: "Dashboard" },
-    { icon: <MapPin size={20} />, path: "/dashboard/streamer/main/videoes", label: "Locations" },
-    { icon: <Music2 size={20} />, path:"/dashboard/streamer/main/playlists", label: "Music" },
-    { icon: <Thermometer size={20} />, path: "/temperature", label: "Temperature" },
+    {
+      icon: <MapPin size={20} />,
+      path: "/dashboard/streamer/main/videoes",
+      label: "Locations",
+    },
+    {
+      icon: <Music2 size={20} />,
+      path: "/dashboard/streamer/main/playlists",
+      label: "Music",
+    },
+    {
+      icon: <Thermometer size={20} />,
+      path: "/temperature",
+      label: "Temperature",
+    },
     { icon: <Timer size={20} />, path: "/timer", label: "Timer" },
-    { icon: <Bell size={20} />, path: "/notifications", label: "Notifications" },
+    {
+      icon: <Bell size={20} />,
+      path: "/notifications",
+      label: "Notifications",
+    },
   ];
 
   return (
@@ -67,7 +85,16 @@ export default function StreamerNavbar() {
       {/* Bottom Section */}
       <div className="mt-auto space-y-6 px-10">
         <button
-          onClick={() => router.push("/settings")}
+          className="w-full flex justify-center text-gray-400 hover:text-gray-600"
+          onClick={async () => {
+            await clearAuthCookie("refreshToken");
+            router.replace("/sign-in/streamer");
+          }}
+        >
+          <LogOut size={20} />
+        </button>
+        <button
+          onClick={() => router.push("/dashboard/streamer/main/channel")}
           className="w-full flex justify-center text-gray-400 hover:text-gray-600"
         >
           <Settings size={20} />

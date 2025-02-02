@@ -25,21 +25,24 @@ const Popular = () => {
     fetchData();
   }, []);
 
-  const scrollVideos = (direction: any) => {
+  const scrollVideos = (direction: "left" | "right") => {
     if (videoRowRef.current) {
       const scrollAmount = direction === "left" ? -400 : 400;
       videoRowRef.current.scrollBy({
         left: scrollAmount,
         behavior: "smooth",
       });
+
+      // Update arrows immediately after scrolling
+      setTimeout(() => handleScroll(), 100);
     }
   };
 
   const handleScroll = () => {
     if (videoRowRef.current) {
       const { scrollLeft, scrollWidth, clientWidth } = videoRowRef.current;
-      setShowLeftArrow(scrollLeft > 0);
-      setShowRightArrow(scrollLeft < scrollWidth - clientWidth - 10);
+      setShowLeftArrow(scrollLeft > 5);
+      setShowRightArrow(scrollLeft < scrollWidth - clientWidth - 5);
     }
   };
 
@@ -58,7 +61,7 @@ const Popular = () => {
     isError,
   } = useGetVideoRecommendationQuery(users?.email);
 
-  const formatCount = (count: any) => {
+  const formatCount = (count: number) => {
     if (!count) return "0";
     if (count >= 1000000) {
       return `${(count / 1000000).toFixed(1)}M`;
@@ -69,7 +72,7 @@ const Popular = () => {
     return count.toString();
   };
 
-  const formatDuration = (seconds: any) => {
+  const formatDuration = (seconds: number) => {
     if (!seconds) return "0:00";
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = Math.floor(seconds % 60);
@@ -120,8 +123,9 @@ const Popular = () => {
   }
 
   return (
-    <div className="bg-black dark:bg-white transition-all duration-500 ease-in-out px-4 min-h-screen">
-      <div className="mb-8">
+    <div className="bg-black dark:bg-white transition-all duration-500 ease-in-out px-4 max-w-full overflow-hidden">
+      {/* Recommended Videos Section */}
+      <div className="mb-8 max-w-[calc(100vw-240px)]">
         <div className="flex justify-between items-center mb-4">
           <div className="flex items-center mt-3">
             <span className="text-orange-500 text-2xl">★</span>
@@ -137,6 +141,8 @@ const Popular = () => {
             <ArrowRight size={16} />
           </button>
         </div>
+
+        {/* Video Carousel */}
         <div className="relative">
           {showLeftArrow && (
             <button
@@ -154,9 +160,10 @@ const Popular = () => {
               <ArrowRight size={24} />
             </button>
           )}
+          {/* Video Cards Container */}
           <div
             ref={videoRowRef}
-            className="flex gap-4 overflow-x-hidden scroll-smooth p-6"
+            className="flex gap-4 overflow-x-hidden scroll-smooth p-6 w-full"
           >
             {recommendations?.data?.map((video: any) => (
               <div
@@ -164,7 +171,7 @@ const Popular = () => {
                 onClick={() =>
                   router.push(`/dashboard/viewer/main/${video._id}`)
                 }
-                className="flex-none w-64 bg-gray-900 dark:bg-gray-100 rounded-lg overflow-hidden group hover:transform hover:scale-105 transition-all duration-200 cursor-pointer"
+                className="flex-none w-64 min-w-[256px] bg-gray-900 dark:bg-gray-100 rounded-lg overflow-hidden group hover:transform hover:scale-105 transition-all duration-200 cursor-pointer"
               >
                 <div className="relative">
                   <img
@@ -222,7 +229,8 @@ const Popular = () => {
         </div>
       </div>
 
-      <div>
+      {/* Live Streams Section */}
+      <div className="max-w-[calc(100vw-240px)]">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-white dark:text-black text-xl font-bold">
             TRENDING FREE FIRE LIVE STREAMS
@@ -235,7 +243,7 @@ const Popular = () => {
             <ArrowRight size={16} />
           </button>
         </div>
-        <div className="flex gap-4 overflow-x-auto pb-4">
+        <div className="flex gap-4 overflow-x-auto pb-4 w-full">
           {streams.map((stream, index) => (
             <StreamerCard key={index} {...stream} />
           ))}
