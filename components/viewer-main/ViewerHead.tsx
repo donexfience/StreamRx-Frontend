@@ -152,8 +152,12 @@ const ViewerHead: React.FC<{}> = ({}) => {
           <div className="shine"></div>
           <div className="button-content">
             <FaUser />
-            {data?.request?.status === "rejected"
+            {data?.request?.status === "pending"
+              ? "Request pending"
+              : data?.request?.status === "rejected"
               ? "Request rejected"
+              : data?.request?.status === "approved"
+              ? "Request approved"
               : "Become a streamer"}
           </div>
         </div>
@@ -178,7 +182,9 @@ const ViewerHead: React.FC<{}> = ({}) => {
           onClose={toggleModal}
         />
       )}
-      {isStreamRequestModal && <StreamerRequset onClose={()=>toggleRequestModal(data)} />}
+      {isStreamRequestModal && (
+        <StreamerRequset onClose={() => toggleRequestModal(data)} />
+      )}
     </header>
   );
 };

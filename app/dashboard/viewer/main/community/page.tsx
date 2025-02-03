@@ -16,7 +16,10 @@ import {
   Youtube,
 } from "lucide-react";
 import { getUserFromCookies } from "@/app/lib/action/auth";
-import { useGetAllSubscribedChannelByUserIdQuery } from "@/redux/services/community/communityApi";
+import {
+  useGetAllSubscribedChannelByUserIdQuery,
+  useGetAllSubscribersByChannelIdQuery,
+} from "@/redux/services/community/communityApi";
 import { useGetUserQuery } from "@/redux/services/user/userApi";
 
 interface Channel {
@@ -24,7 +27,8 @@ interface Channel {
   icon: any;
   imageUrl: string;
   category: string;
-  channelId: string; // Added to store the actual channel ID
+  channelId: string;
+  ownerId: string;
 }
 
 export default function Chat() {
@@ -69,20 +73,29 @@ export default function Chat() {
         : Hash,
       imageUrl: channel.channelId.channelProfileImageUrl,
       category: channel.channelId.category[0],
-      channelId: channel.channelId._id, // Store the actual channel ID
+      channelId: channel.channelId._id,
+      ownerId: channel.channelId.ownerId,
     })) || [];
 
-  // Set first channel as active by default if none selected
   useEffect(() => {
     if (subscribedChannels.length > 0 && !activeChannel) {
       setActiveChannel(subscribedChannels[0]);
     }
   }, [subscribedChannels]);
 
+  const { data: allSubscribers } = useGetAllSubscribersByChannelIdQuery(
+    {
+      channelId: activeChannel?.channelId || "",
+    },
+    {
+      skip: !activeChannel?.channelId,
+    }
+  );
+
   return (
-    <div className="flex h-screen bg-gray-950 text-gray-300 w-full">
+    <div className="flex h-screen overflow-hidden bg-gray-950 text-gray-300 w-full">
       {/* Sidebar */}
-      <div className="w-80 h-full bg-gradient-to-b from-gray-900 to-gray-800 shadow-lg p-4 flex flex-col border-r border-gray-700">
+      <div className="w-80 h-full  bg-gray-950 shadow-lg p-4 flex flex-col border-r border-gray-700 overflow-y-auto">
         <h2 className="text-xl font-bold text-white mb-6">Channels</h2>
 
         {/* Subscribed Channels */}
@@ -91,7 +104,7 @@ export default function Chat() {
             <h3 className="text-sm font-semibold text-gray-400 px-4 mb-2">
               Subscribed Channels
             </h3>
-            {subscribedChannels.map((channel, index) => (
+            {subscribedChannels.map((channel: any, index) => (
               <button
                 key={`subscribed-${index}`}
                 onClick={() => setActiveChannel(channel)}
@@ -102,9 +115,9 @@ export default function Chat() {
                     : "hover:bg-gray-800 text-gray-400 hover:scale-105"
                 }`}
               >
-                {channel.imageUrl ? (
+                {channel.channelProfileImageUrl ? (
                   <img
-                    src={channel.imageUrl}
+                    src={channel.channelProfileImageUrl}
                     alt={channel.label}
                     className="h-6 w-6 rounded-full"
                   />
@@ -125,18 +138,18 @@ export default function Chat() {
           </div>
         )}
       </div>
-
       {/* Chat Section */}
-      <div className="flex-1 flex flex-col bg-gray-950 border-l border-r border-gray-800 backdrop-blur-lg bg-opacity-80 p-4">
-        <ChatSection
-          currentChannel={activeChannel}
-          currentUser={userData?.user}
-        />
+      <div className="flex-1 flex flex-col bg-gray-950 border-l border-r border-gray-800 backdrop-blur-lg bg-opacity-80 overflow-hidden">
+        <div className="flex-1 overflow-y-auto">
+          <ChatSection
+            currentChannel={activeChannel}
+            currentUser={userData?.user}
+            channelMembers={allSubscribers}
+          />
+        </div>
       </div>
-
-      {/* Members List */}
-      <div className="w-72 h-full bg-gradient-to-b from-gray-900 to-gray-800 shadow-lg p-4 border-l border-gray-700">
-        {/* <MembersList channelId={activeChannel?.channelId} /> */}
+      <div className="w-72 h-full  bg-gray-950 shadow-lg p-4 border-l border-gray-700 ">
+        <MembersList channelId={activeChannel?.channelId || ""} />
       </div>
     </div>
   );

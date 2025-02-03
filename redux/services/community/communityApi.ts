@@ -22,7 +22,19 @@ export const httpCommunityApi = createApi({
         };
       },
     }),
+    getAllSubscribersByChannelId: builder.query({
+      query: ({ channelId }) => {
+        console.log(channelId, "channelId id got");
+        return {
+          url: `/subscription/subscriptions/allsub/${channelId}`,
+          method: "GET",
+        };
+      },
+    }),
   }),
 });
 
-export const { useGetAllSubscribedChannelByUserIdQuery } = httpCommunityApi;
+export const {
+  useGetAllSubscribedChannelByUserIdQuery,
+  useGetAllSubscribersByChannelIdQuery,
+} = httpCommunityApi;

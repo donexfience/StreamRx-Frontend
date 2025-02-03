@@ -7,7 +7,7 @@ import { Link, Settings } from "lucide-react";
 
 import { useEffect, useState } from "react";
 import { useSocket } from "@/hooks/useSocket";
-
+import { useGetAllSubscribersByChannelIdQuery } from "@/redux/services/community/communityApi";
 
 interface Member {
   _id: string;
@@ -16,10 +16,35 @@ interface Member {
   status: "online" | "offline";
 }
 
-export function MembersList() {
-  const {communitySocket} = useSocket();
+interface MemberlistProps {
+  channelId: string;
+}
+
+export function MembersList({ channelId }: MemberlistProps) {
+  const { communitySocket } = useSocket();
   const [members, setMembers] = useState<Member[]>([]);
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+
+  const { data: allSubscribers } = useGetAllSubscribersByChannelIdQuery({
+    channelId: channelId,
+  });
+  console.log(allSubscribers, "all sub");
+  useEffect(() => {
+    if (allSubscribers) {
+      console.log(allSubscribers, "data from back");
+      const formattedMembers = allSubscribers.map((sub: any) => ({
+        _id: sub.userId._id,
+        name: sub.userId.username,
+        avatar: sub.userId.profileImageURL || "",
+        status: "offline",
+      }));
+      console.log(allSubscribers.data, "data ssssssssssssssss");
+      console.log(formattedMembers, "formated");
+      setMembers(formattedMembers);
+    }
+  }, [allSubscribers]);
+
+  console.log(members, "all members");
 
   useEffect(() => {
     if (!communitySocket) return;

@@ -20,16 +20,18 @@ import {
   X,
   AtSign,
   Send,
+  Crown,
 } from "lucide-react";
 import data from "@emoji-mart/data";
 import Picker from "@emoji-mart/react";
+import { uploadToCloudinary } from "@/app/lib/action/user";
 
 interface ChatMessage {
   _id: string;
   content: string;
   senderId: {
     _id: string;
-    name: string;
+    username: string;
     profileImage: string;
   };
   channelId: string;
@@ -56,6 +58,8 @@ interface ChatSectionProps {
     channelId: string;
     label: string;
     category: string;
+    imageUrl: string;
+    ownerId: string; // Added ownerId to the interface
   } | null;
   currentUser: any;
   channelMembers: Array<{
@@ -73,7 +77,9 @@ export function ChatSection({
   const { communitySocket } = useSocket();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState("");
-  const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
+  const [typingUsers, setTypingUsers] = useState<
+    Map<string, { name: string; timestamp: number }>
+  >(new Map());
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isEditing, setIsEditing] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
@@ -88,6 +94,7 @@ export function ChatSection({
   const typingTimeoutRef = useRef<NodeJS.Timeout>();
 
   useEffect(() => {
+    // Clear messages when channel changes
     setMessages([]);
   }, [currentChannel?.channelId]);
 
@@ -105,13 +112,12 @@ export function ChatSection({
     });
 
     const handleMessageHistory = (history: ChatMessage[]) => {
-      console.log(history, "message got frontned");
       const validMessages = (history || []).filter(
         (msg) =>
           msg && msg._id && msg.senderId && typeof msg.content === "string"
       );
       setMessages(validMessages);
-      scrollToBottom();
+      setTimeout(() => scrollToBottom(), 100);
     };
 
     const handleNewMessage = (message: ChatMessage) => {
@@ -123,7 +129,6 @@ export function ChatSection({
 
     const handleReactionUpdate = (updatedMessage: ChatMessage) => {
       if (!updatedMessage?._id) return;
-
       setMessages((prev) =>
         prev.map((msg) =>
           msg._id === updatedMessage._id ? updatedMessage : msg
@@ -138,26 +143,33 @@ export function ChatSection({
       userId: string;
       userName: string;
     }) => {
-      if (userName) {
-        setTypingUsers((prev) => new Set(prev).add(userName));
-      }
+      setTypingUsers((prev) => {
+        const newMap = new Map(prev);
+        newMap.set(userId, { name: userName, timestamp: Date.now() });
+        return newMap;
+      });
     };
 
-    const handleTypingStop = ({
-      userId,
-      userName,
-    }: {
-      userId: string;
-      userName: string;
-    }) => {
-      if (userName) {
-        setTypingUsers((prev) => {
-          const newSet = new Set(prev);
-          newSet.delete(userName);
-          return newSet;
-        });
-      }
+    const handleTypingStop = ({ userId }: { userId: string }) => {
+      setTypingUsers((prev) => {
+        const newMap = new Map(prev);
+        newMap.delete(userId);
+        return newMap;
+      });
     };
+
+    const typingCleanupInterval = setInterval(() => {
+      setTypingUsers((prev) => {
+        const newMap = new Map(prev);
+        const now = Date.now();
+        for (const [userId, data] of newMap.entries()) {
+          if (now - data.timestamp > 3000) {
+            newMap.delete(userId);
+          }
+        }
+        return newMap;
+      });
+    }, 5000);
 
     communitySocket.on("message-history", handleMessageHistory);
     communitySocket.on("new-message", handleNewMessage);
@@ -173,13 +185,14 @@ export function ChatSection({
         });
       }
 
+      clearInterval(typingCleanupInterval);
       communitySocket.off("message-history", handleMessageHistory);
       communitySocket.off("new-message", handleNewMessage);
       communitySocket.off("message-reaction-updated", handleReactionUpdate);
       communitySocket.off("user-typing", handleTypingStart);
       communitySocket.off("user-stopped-typing", handleTypingStop);
     };
-  }, [communitySocket, currentChannel?.channelId, currentUser?._id]);
+  }, [communitySocket, currentChannel?.channelId, currentUser?._id, isEditing]);
 
   const scrollToMessage = (messageId: string) => {
     const messageElement = document.getElementById(`message-${messageId}`);
@@ -190,6 +203,30 @@ export function ChatSection({
         messageElement.classList.remove("bg-blue-50");
       }, 2000);
     }
+  };
+
+  const handleTyping = () => {
+    if (!communitySocket || !currentChannel?.channelId || !currentUser?._id)
+      return;
+
+    communitySocket.emit("typing-started", {
+      channelId: currentChannel.channelId,
+      userId: currentUser._id,
+      userName: currentUser.name,
+    });
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    typingTimeoutRef.current = setTimeout(() => {
+      if (communitySocket && currentChannel?.channelId && currentUser?._id) {
+        communitySocket.emit("typing-stopped", {
+          channelId: currentChannel.channelId,
+          userId: currentUser._id,
+        });
+      }
+    }, 1000);
   };
 
   const scrollToBottom = () => {
@@ -246,31 +283,6 @@ export function ChatSection({
     });
   };
 
-  const handleTyping = () => {
-    if (!communitySocket || !currentChannel?.channelId || !currentUser?._id)
-      return;
-
-    communitySocket.emit("typing-started", {
-      channelId: currentChannel.channelId,
-      userId: currentUser._id,
-      userName: currentUser.name,
-    });
-
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-    }
-
-    typingTimeoutRef.current = setTimeout(() => {
-      if (communitySocket && currentChannel?.channelId && currentUser?._id) {
-        communitySocket.emit("typing-stopped", {
-          channelId: currentChannel.channelId,
-          userId: currentUser._id,
-          userName: currentUser.name,
-        });
-      }
-    }, 1000);
-  };
-
   if (!currentChannel || !currentUser) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -286,11 +298,8 @@ export function ChatSection({
     formData.append("file", file);
 
     try {
-      const response = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-      const { fileUrl } = await response.json();
+      const fileUrl = await uploadToCloudinary(file);
+      console.log(fileUrl, "url afeter sending message as a file");
 
       communitySocket?.emit("send-message", {
         channelId: currentChannel?.channelId,
@@ -358,182 +367,213 @@ export function ChatSection({
     handleTyping();
   };
 
-  return (
-    <div className="flex flex-col h-full">
-      <div className="h-12 border-b flex items-center px-4">
-        <div className="flex items-center gap-2">
-          <span className="font-semibold">{currentChannel?.label}</span>
-          <span className="text-muted-foreground">
-            {currentChannel?.category}
-          </span>
-        </div>
-      </div>
+  const MessageBubble = ({ message }: { message: ChatMessage }) => {
+    const isCurrentUser = message.senderId._id === currentUser._id;
 
-      <ScrollArea className="flex-1 p-4" ref={scrollRef}>
-        <div className="space-y-4">
-          {messages.map((message) => (
+    return (
+      <div
+        id={`message-${message._id}`}
+        className={`space-y-2 transition-colors duration-300 rounded-lg p-2 ${
+          message.replyTo ? "ml-2" : ""
+        } ${isCurrentUser ? "ml-auto max-w-[80%]" : "mr-auto max-w-[80%]"}`}
+      >
+        {message.replyTo && (
+          <div
+            onClick={() => scrollToMessage(message.replyTo?._id || "")}
+            className="flex items-center gap-2 -mb-1 p-2 bg-gray-50 border-l-4 border-blue-400 rounded cursor-pointer hover:bg-gray-100"
+          >
+            <div className="flex-1 overflow-hidden">
+              <div className="text-sm font-medium text-blue-600">
+                {message.replyTo.senderId.name}
+              </div>
+              <div className="text-sm text-gray-600 truncate">
+                {message.replyTo.content}
+              </div>
+            </div>
+            <Reply className="h-4 w-4 text-gray-400" />
+          </div>
+        )}
+
+        <div
+          className={`flex items-start gap-2 ${
+            isCurrentUser ? "flex-row-reverse" : ""
+          }`}
+        >
+          <Avatar>
+            {message.senderId?.profileImage ? (
+              <AvatarImage src={message.senderId.profileImage} />
+            ) : null}
+            <AvatarFallback>
+              {message.senderId?.username?.[0] || "?"}
+            </AvatarFallback>
+          </Avatar>
+
+          <div className={`space-y-1 ${isCurrentUser ? "text-right" : ""}`}>
             <div
-              key={message._id}
-              id={`message-${message._id}`}
-              className={`space-y-2 transition-colors duration-300 rounded-lg p-2 ${
-                message.replyTo ? "ml-2" : ""
+              className={`flex items-center gap-2 ${
+                isCurrentUser ? "justify-end" : ""
               }`}
             >
-              {message.replyTo && (
-                <div
-                  onClick={() => scrollToMessage(message.replyTo?._id || "")}
-                  className="flex items-center gap-2 -mb-1 p-2 bg-gray-50 border-l-4 border-blue-400 rounded cursor-pointer hover:bg-gray-100"
+              <span className="font-semibold flex items-center gap-1">
+                {message.senderId?.username || "Unknown User"}
+                {currentChannel?.ownerId === message.senderId._id && (
+                  <Crown className="h-4 w-4 text-yellow-500" />
+                )}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {new Date(message.createdAt).toLocaleTimeString()}
+                {message.isEdited && " (edited)"}
+              </span>
+            </div>
+
+            {isEditing === message._id ? (
+              <div className="flex gap-2">
+                <Input
+                  defaultValue={message.content}
+                  onKeyPress={(e) => {
+                    if (e.key === "Enter") {
+                      handleEditMessage(message._id, e.currentTarget.value);
+                    }
+                  }}
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsEditing(null)}
                 >
-                  <div className="flex-1 overflow-hidden">
-                    <div className="text-sm font-medium text-blue-600">
-                      {message.replyTo.senderId.name}
-                    </div>
-                    <div className="text-sm text-gray-600 truncate">
-                      {message.replyTo.content}
-                      {message.replyTo.fileUrl && (
-                        <span className="text-xs text-gray-500 ml-2">
-                          <ImageIcon className="h-3 w-3 inline mr-1" />
-                          Photo
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <Reply className="h-4 w-4 text-gray-400" />
-                </div>
-              )}
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : (
+              <div
+                className={`p-3 rounded-lg ${
+                  isCurrentUser
+                    ? "bg-blue-500 text-white ml-auto"
+                    : "bg-gray-100 text-gray-900 mr-auto"
+                }`}
+              >
+                <p>{message.content}</p>
+              </div>
+            )}
 
-              <div className="flex items-start gap-2">
-                <Avatar>
-                  {message.senderId?.profileImage ? (
-                    <AvatarImage src={message.senderId.profileImage} />
-                  ) : null}
-                  <AvatarFallback>
-                    {message.senderId?.name
-                      ? message.senderId.username[0]
-                      : "?"}
-                  </AvatarFallback>
-                </Avatar>
+            {message.fileUrl && (
+              <Card
+                className={`mt-2 overflow-hidden relative group ${
+                  isCurrentUser ? "ml-auto" : "mr-auto"
+                }`}
+              >
+                <img
+                  src={message.fileUrl}
+                  alt="Message attachment"
+                  className="w-full h-auto max-h-96 object-contain"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = "none";
+                  }}
+                />
+              </Card>
+            )}
 
-                <div
-                  className={`flex-1 space-y-1 ${
-                    message.replyTo ? "ml-2" : ""
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold">
-                      {message.senderId?.username || "Unknown User"}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(message.createdAt).toLocaleTimeString()}
-                      {message.isEdited && " (edited)"}
-                    </span>
-                  </div>
+            <div
+              className={`flex items-center gap-2 ${
+                isCurrentUser ? "justify-end" : ""
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                {message.reactions?.map((reaction, index) => (
+                  <Button
+                    key={index}
+                    variant="ghost"
+                    size="sm"
+                    className={`text-xs ${
+                      reaction.users?.includes(currentUser._id)
+                        ? "bg-purple-500/20"
+                        : ""
+                    }`}
+                    onClick={() => handleReaction(message._id, reaction.emoji)}
+                  >
+                    {reaction.emoji} {reaction.users?.length || 0}
+                  </Button>
+                ))}
 
-                  {isEditing === message._id ? (
-                    <div className="flex gap-2">
-                      <Input
-                        defaultValue={message.content}
-                        onKeyPress={(e) => {
-                          if (e.key === "Enter") {
-                            handleEditMessage(
-                              message._id,
-                              e.currentTarget.value
-                            );
-                          }
-                        }}
-                      />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setIsEditing(null)}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <p>{message.content}</p>
+                <div className="flex gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleReaction(message._id, "❤️")}
+                  >
+                    <Heart className="h-4 w-4" />
+                  </Button>
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleReply(message)}
+                  >
+                    <Reply className="h-4 w-4" />
+                  </Button>
+
+                  {message.senderId._id === currentUser._id && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setIsEditing(message._id)}
+                    >
+                      <Edit2 className="h-4 w-4" />
+                    </Button>
                   )}
-
-                  {message.fileUrl && (
-                    <Card className="mt-2 overflow-hidden relative group">
-                      <img
-                        src={message.fileUrl}
-                        alt="Message attachment"
-                        className="w-full h-auto max-h-96 object-contain"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = "none";
-                        }}
-                      />
-                    </Card>
-                  )}
-
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-2">
-                      {message.reactions?.map((reaction, index) => (
-                        <Button
-                          key={index}
-                          variant="ghost"
-                          size="sm"
-                          className={`text-xs ${
-                            reaction.users?.includes(currentUser._id)
-                              ? "bg-purple-500/20"
-                              : ""
-                          }`}
-                          onClick={() =>
-                            handleReaction(message._id, reaction.emoji)
-                          }
-                        >
-                          {reaction.emoji} {reaction.users?.length || 0}
-                        </Button>
-                      ))}
-
-                      <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleReaction(message._id, "❤️")}
-                        >
-                          <Heart className="h-4 w-4" />
-                        </Button>
-
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleReply(message)}
-                        >
-                          <Reply className="h-4 w-4" />
-                        </Button>
-
-                        {message.senderId._id === currentUser._id && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setIsEditing(message._id)}
-                          >
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  console.log(currentChannel, "data of channell");
+  return (
+    <div className="flex flex-col h-full ">
+      <div className="h-12 border-b flex items-center px-4 fixed top-0 w-full bg-white z-10">
+        <div className="flex items-center gap-2">
+          {currentChannel?.imageUrl ? (
+            <img
+              src={currentChannel.imageUrl}
+              alt={currentChannel.label}
+              className="h-6 w-6 rounded-full"
+            />
+          ) : (
+            <MessageCircle className="h-6 w-6" />
+          )}
+          <div className="flex flex-col items-start">
+            <span className="text-sm font-medium">{currentChannel?.label}</span>
+            <span className="text-xs text-gray-500">
+              {currentChannel?.category}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <ScrollArea className="flex-1 p-4 mt-12 overflow-y-auto" ref={scrollRef}>
+        <div className="space-y-4">
+          {messages.map((message) => (
+            <MessageBubble key={message._id} message={message} />
           ))}
         </div>
-
         {typingUsers.size > 0 && (
           <div className="text-sm text-muted-foreground italic">
-            {Array.from(typingUsers).join(", ")} typing...
+            {Array.from(typingUsers.values())
+              .map((user) => user.name)
+              .join(", ")}{" "}
+            {typingUsers.size === 1 ? "is" : "are"} typing...
           </div>
         )}
       </ScrollArea>
 
       {replyingTo && (
-        <div className="px-4 py-2 border-t flex items-center justify-between">
+        <div className="px-4 py-2 border-t flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Reply className="h-4 w-4" />
-            <span>Replying to {replyingTo.senderId.name}</span>
+            <span>Replying to {replyingTo.senderId.username}</span>
           </div>
           <Button variant="ghost" size="sm" onClick={() => setReplyingTo(null)}>
             <X className="h-4 w-4" />
@@ -541,7 +581,7 @@ export function ChatSection({
         </div>
       )}
 
-      <div className="p-4 border-t space-y-2">
+      <div className="p-4 border-t space-y-2 flex-shrink-0">
         {selectedFile && (
           <Card className="p-2 flex items-center justify-between">
             <span className="text-sm truncate">{selectedFile.name}</span>
@@ -555,7 +595,7 @@ export function ChatSection({
           </Card>
         )}
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 ">
           <div className="flex-1 flex gap-2">
             <Input
               ref={messageInputRef}

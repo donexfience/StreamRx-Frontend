@@ -26,16 +26,6 @@ import { deleteFromS3 } from "@/app/lib/action/s3";
 const VideoListingPage = () => {
   const router = useRouter();
   const [users, setUsers] = useState<any>(null);
-  const {
-    data: videos,
-    refetch,
-    error: videoError,
-  } = useGetAllVideosQuery({
-    page: 1,
-    limit: 10,
-  });
-  console.log(videos?.data);
-  console.log(videoError, "video error");
 
   useEffect(() => {
     const fetchData = async () => {
@@ -51,6 +41,18 @@ const VideoListingPage = () => {
     isLoading,
     isError,
   } = useGetChannelByEmailQuery(users?.email, { skip: !users?.email });
+
+  const {
+    data: videos,
+    refetch,
+    error: videoError,
+  } = useGetAllVideosQuery({
+    page: 1,
+    limit: 10,
+    channelId: channelData?._id || "",
+  });
+  console.log(videos?.data);
+  console.log(videoError, "video error");
   const [deleteVideo] = useDeleteVideoMutation();
 
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -179,90 +181,102 @@ const VideoListingPage = () => {
       </div>
       {/* //video looping */}
       <div className="space-y-4">
-        {videos?.data?.map((video: any, index: number) => (
-          <div key={index} className="border rounded-lg p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3
-                  className="font-medium"
-                  onClick={() =>
-                    router.push(`/dashboard/streamer/main/videoes/${video._id}`)
-                  }
-                >
-                  {video.title}
-                </h3>
-                <p className="text-sm text-gray-500">
-                  {video.metadata?.mimeType || "Unknown type"}
-                </p>
-              </div>
-              <div className="flex items-center gap-6">
-                <div className="flex items-center gap-2">
-                  <Eye className="w-4 h-4 text-gray-400" />
-                  <span>{video.views || 0}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <MessageSquare className="w-4 h-4 text-gray-400" />
-                  <span>{video.comments || 0}</span>
-                </div>
-                <span
-                  className={`px-3 py-1 rounded-full text-sm ${
-                    video.status === "ready"
-                      ? "bg-green-100 text-green-800"
-                      : video.status === "processing"
-                      ? "bg-blue-100 text-blue-800"
-                      : "bg-gray-100 text-gray-800"
-                  }`}
-                >
-                  {video.status.charAt(0).toUpperCase() + video.status.slice(1)}
-                </span>
-                <span
-                  className={`px-3 py-1 rounded-full text-sm ${
-                    getPriority(video) === "High"
-                      ? "bg-red-100 text-red-800"
-                      : "bg-yellow-100 text-yellow-800"
-                  }`}
-                >
-                  {getPriority(video)}
-                </span>
-                <span className="text-sm text-gray-500">
-                  {getTimeDifference(video.createdAt)}
-                </span>
-                <span
-                  className={`px-3 py-1 rounded-full text-sm ${
-                    video.visibility === "public"
-                      ? "bg-green-100 text-green-800"
-                      : "bg-gray-100 text-gray-800"
-                  }`}
-                >
-                  {video.visibility.charAt(0).toUpperCase() +
-                    video.visibility.slice(1)}
-                </span>
-                <div className="w-32 bg-gray-200 rounded-full h-2">
-                  <div
-                    className="bg-blue-600 h-2 rounded-full"
-                    style={{ width: `${video.processingProgress}%` }}
-                  />
-                </div>
+        {videos?.data && videos.data.length > 0 ? (
+          videos.data.map((video: any, index: number) => (
+            <div key={index} className="border rounded-lg p-4">
+              <div className="flex items-center justify-between">
                 <div>
-                  <div className="flex items-center gap-4 ml-4">
-                    <button
-                      className="p-2 rounded-full hover:bg-gray-100"
-                      onClick={() => handleEditClick(video)}
-                    >
-                      <Edit className="w-5 h-5 text-blue-500" />
-                    </button>
-                    <button
-                      className="p-2 rounded-full hover:bg-gray-100"
-                      onClick={() => handleDelete(video)}
-                    >
-                      <Trash2 className="w-5 h-5 text-red-500" />
-                    </button>
+                  <h3
+                    className="font-medium cursor-pointer"
+                    onClick={() =>
+                      router.push(
+                        `/dashboard/streamer/main/videos/${video._id}`
+                      )
+                    }
+                  >
+                    {video.title}
+                  </h3>
+                  <p className="text-sm text-gray-500">
+                    {video.metadata?.mimeType || "Unknown type"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-6">
+                  <div className="flex items-center gap-2">
+                    <Eye className="w-4 h-4 text-gray-400" />
+                    <span>{video.views || 0}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <MessageSquare className="w-4 h-4 text-gray-400" />
+                    <span>{video.comments || 0}</span>
+                  </div>
+                  <span
+                    className={`px-3 py-1 rounded-full text-sm ${
+                      video.status === "ready"
+                        ? "bg-green-100 text-green-800"
+                        : video.status === "processing"
+                        ? "bg-blue-100 text-blue-800"
+                        : "bg-gray-100 text-gray-800"
+                    }`}
+                  >
+                    {video.status.charAt(0).toUpperCase() +
+                      video.status.slice(1)}
+                  </span>
+                  <span
+                    className={`px-3 py-1 rounded-full text-sm ${
+                      getPriority(video) === "High"
+                        ? "bg-red-100 text-red-800"
+                        : "bg-yellow-100 text-yellow-800"
+                    }`}
+                  >
+                    {getPriority(video)}
+                  </span>
+                  <span className="text-sm text-gray-500">
+                    {getTimeDifference(video.createdAt)}
+                  </span>
+                  <span
+                    className={`px-3 py-1 rounded-full text-sm ${
+                      video.visibility === "public"
+                        ? "bg-green-100 text-green-800"
+                        : "bg-gray-100 text-gray-800"
+                    }`}
+                  >
+                    {video.visibility.charAt(0).toUpperCase() +
+                      video.visibility.slice(1)}
+                  </span>
+                  <div className="w-32 bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-blue-600 h-2 rounded-full"
+                      style={{ width: `${video.processingProgress}%` }}
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-4 ml-4">
+                      <button
+                        className="p-2 rounded-full hover:bg-gray-100"
+                        onClick={() => handleEditClick(video)}
+                      >
+                        <Edit className="w-5 h-5 text-blue-500" />
+                      </button>
+                      <button
+                        className="p-2 rounded-full hover:bg-gray-100"
+                        onClick={() => handleDelete(video)}
+                      >
+                        <Trash2 className="w-5 h-5 text-red-500" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
+          ))
+        ) : (
+          <div className="text-center py-10">
+            <p className="text-lg text-gray-500">No videos found</p>
+            <p className="text-sm text-gray-400">
+              Upload your first video to get started.
+            </p>
           </div>
-        ))}
+        )}
       </div>
 
       {showUploadModal && (

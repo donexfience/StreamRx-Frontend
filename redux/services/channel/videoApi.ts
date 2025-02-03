@@ -34,10 +34,10 @@ export const httpVideoApi = createApi({
 
     getAllVideos: builder.query<
       AllVideoUploadResponse,
-      { page: number; limit: number }
+      { page: number; limit: number; channelId: string }
     >({
-      query: ({ page, limit }) => ({
-        url: `/videoes/all`,
+      query: ({ page, limit, channelId }) => ({
+        url: `/videoes/${channelId}/all`,
         method: "GET",
         params: { page, limit },
       }),
