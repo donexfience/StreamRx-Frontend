@@ -42,15 +42,18 @@ export const httpVideoApi = createApi({
         params: { page, limit },
       }),
     }),
-    getVideoByQuery: builder.query<AllVideoUploadResponse, { query: any }>({
-      query: ({ query }) => {
+    getVideoByQuery: builder.query<
+      AllVideoUploadResponse,
+      { query: any; channelId: string }
+    >({
+      query: ({ query, channelId }) => {
         console.log(
           "Query parameter in RTK Query:",
           query,
           encodeURIComponent(query)
         );
         return {
-          url: `/videoes/video`,
+          url: `/videoes/video/${channelId}`,
           method: "GET",
           params: { query: encodeURIComponent(query) },
         };

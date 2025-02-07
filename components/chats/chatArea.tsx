@@ -128,6 +128,7 @@ export function ChatSection({
     };
 
     const handleReactionUpdate = (updatedMessage: ChatMessage) => {
+      console.log(updatedMessage, "message updated");
       if (!updatedMessage?._id) return;
       setMessages((prev) =>
         prev.map((msg) =>
@@ -143,12 +144,17 @@ export function ChatSection({
       userId: string;
       userName: string;
     }) => {
+      console.log("Typing start received:", { userId, userName });
       setTypingUsers((prev) => {
+        console.log("Previous typing users:", Array.from(prev.entries()));
         const newMap = new Map(prev);
         newMap.set(userId, { name: userName, timestamp: Date.now() });
+        console.log("New typing users:", Array.from(newMap.entries()));
         return newMap;
       });
     };
+
+    console.log(typingUsers, "user  typing");
 
     const handleTypingStop = ({ userId }: { userId: string }) => {
       setTypingUsers((prev) => {
@@ -204,6 +210,7 @@ export function ChatSection({
       }, 2000);
     }
   };
+  console.log(messages, "messages");
 
   const handleTyping = () => {
     if (!communitySocket || !currentChannel?.channelId || !currentUser?._id)
@@ -238,7 +245,6 @@ export function ChatSection({
     }
   };
 
-  console.log(currentUser, "user");
   const handleSendMessage = () => {
     if (
       !communitySocket ||
@@ -299,7 +305,6 @@ export function ChatSection({
 
     try {
       const fileUrl = await uploadToCloudinary(file);
-      console.log(fileUrl, "url afeter sending message as a file");
 
       communitySocket?.emit("send-message", {
         channelId: currentChannel?.channelId,
@@ -365,6 +370,30 @@ export function ChatSection({
     }
 
     handleTyping();
+  };
+
+  const consolidateReactions = (
+    reactions: Array<{ emoji: string; users: string[] }>
+  ) => {
+    const heartReactions = reactions.filter((r) => r.emoji === "❤️");
+    const totalHeartCount = heartReactions.reduce(
+      (sum, reaction) => sum + reaction.users.length,
+      0
+    );
+    const otherReactions = reactions.filter((r) => r.emoji !== "❤️");
+
+    return [
+      ...(totalHeartCount > 0
+        ? [
+            {
+              emoji: "❤️",
+              users: heartReactions.flatMap((r) => r.users),
+              count: totalHeartCount,
+            },
+          ]
+        : []),
+      ...otherReactions,
+    ];
   };
 
   const MessageBubble = ({ message }: { message: ChatMessage }) => {
@@ -479,22 +508,22 @@ export function ChatSection({
               }`}
             >
               <div className="flex items-center gap-2">
-                {message.reactions?.map((reaction, index) => (
-                  <Button
-                    key={index}
-                    variant="ghost"
-                    size="sm"
-                    className={`text-xs ${
-                      reaction.users?.includes(currentUser._id)
-                        ? "bg-purple-500/20"
-                        : ""
-                    }`}
-                    onClick={() => handleReaction(message._id, reaction.emoji)}
-                  >
-                    {reaction.emoji} {reaction.users?.length || 0}
-                  </Button>
-                ))}
-
+                {consolidateReactions(message.reactions).map(
+                  (reaction, index) => (
+                    <button
+                      key={`${message._id}-${reaction.emoji}-${index}`}
+                      onClick={() =>
+                        handleReaction(message._id, reaction.emoji)
+                      }
+                      className="flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-100"
+                    >
+                      <span className="text-sm">{reaction.emoji}</span>
+                      <span className="text-xs text-gray-600">
+                        {reaction.users?.length || ""}
+                      </span>
+                    </button>
+                  )
+                )}
                 <div className="flex gap-1">
                   <Button
                     variant="ghost"
@@ -530,7 +559,6 @@ export function ChatSection({
     );
   };
 
-  console.log(currentChannel, "data of channell");
   return (
     <div className="flex flex-col h-full ">
       <div className="h-12 border-b flex items-center px-4 fixed top-0 w-full bg-white z-10">

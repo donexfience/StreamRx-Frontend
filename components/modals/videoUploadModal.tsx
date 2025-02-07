@@ -148,7 +148,10 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
   });
 
   const { data: playlist, isLoading } = useGetPlaylistByQueryQuery(
-    { query: searchQuery ? { title: searchQuery } : {} },
+    {
+      query: searchQuery ? { title: searchQuery } : {},
+      channelId: channelId || "",
+    },
     { skip: !searchQuery }
   );
 

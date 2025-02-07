@@ -290,7 +290,7 @@ const SignupPage = () => {
               <a href="#" className="text-gray-400 hover:text-white">
                 New to StreamRx?
               </a>
-              <a href="#" className="text-gray-400 hover:text-white">
+              <a href="/sign-in/viewer  " className="text-gray-400 hover:text-white">
                 Already have an account?
               </a>
             </div>

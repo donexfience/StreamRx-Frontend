@@ -61,6 +61,16 @@ export default function Chat() {
     }
   );
 
+
+  const { data: allSubscribers } = useGetAllSubscribersByChannelIdQuery(
+    {
+      channelId: activeChannel?.channelId,
+    },
+    {
+      skip: !activeChannel?.channelId,
+    }
+  );
+
   const subscribedChannels: Channel[] =
     channelData?.data?.map((channel: any) => ({
       label: channel.channelId.channelName,
@@ -82,15 +92,6 @@ export default function Chat() {
       setActiveChannel(subscribedChannels[0]);
     }
   }, [subscribedChannels]);
-
-  const { data: allSubscribers } = useGetAllSubscribersByChannelIdQuery(
-    {
-      channelId: activeChannel?.channelId || "",
-    },
-    {
-      skip: !activeChannel?.channelId,
-    }
-  );
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-950 text-gray-300 w-full">

@@ -33,15 +33,18 @@ export const httpPlaylistApi = createApi({
         params: { page, limit },
       }),
     }),
-    getPlaylistByQuery: builder.query<PlaylistResponse, { query: any }>({
-      query: ({ query }) => {
+    getPlaylistByQuery: builder.query<
+      PlaylistResponse,
+      { query: any; channelId: string }
+    >({
+      query: ({ query, channelId }) => {
         console.log(
           "Query parameter in RTK Query:",
           query,
           encodeURIComponent(query)
         );
         return {
-          url: `/playlist/playlist`,
+          url: `/playlist/playlist/${channelId}`,
           method: "GET",
           params: { query: encodeURIComponent(query) },
         };

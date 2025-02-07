@@ -130,8 +130,13 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
     isLoading,
     error,
   } = useGetVideoByQueryQuery(
-    { query: searchQuery ? { title: searchQuery } : {} },
-    { skip: !searchQuery }
+    {
+      query: searchQuery ? { title: searchQuery } : {},
+      channelId: channelData?._id || "",
+    },
+    {
+      skip: !searchQuery,
+    }
   );
 
   const [createInitialPlaylist] = useCreateInitialPlaylistMutation();

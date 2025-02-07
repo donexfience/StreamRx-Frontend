@@ -20,43 +20,56 @@ interface MemberlistProps {
   channelId: string;
 }
 
+interface Member {
+  _id: string;
+  name: string;
+  avatar: string;
+  status: "online" | "offline";
+}
+
+interface MemberlistProps {
+  channelId: string;
+}
+
 export function MembersList({ channelId }: MemberlistProps) {
   const { communitySocket } = useSocket();
   const [members, setMembers] = useState<Member[]>([]);
-  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+  const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
 
   const { data: allSubscribers } = useGetAllSubscribersByChannelIdQuery({
     channelId: channelId,
   });
-  console.log(allSubscribers, "all sub");
+
   useEffect(() => {
     if (allSubscribers) {
-      console.log(allSubscribers, "data from back");
       const formattedMembers = allSubscribers.map((sub: any) => ({
         _id: sub.userId._id,
         name: sub.userId.username,
         avatar: sub.userId.profileImageURL || "",
         status: "offline",
       }));
-      console.log(allSubscribers.data, "data ssssssssssssssss");
-      console.log(formattedMembers, "formated");
       setMembers(formattedMembers);
     }
   }, [allSubscribers]);
 
-  console.log(members, "all members");
-
   useEffect(() => {
     if (!communitySocket) return;
 
-    communitySocket.on("user-joined", ({ onlineUsers }) => {
-      setOnlineUsers(new Set(onlineUsers));
-    });
+    communitySocket.on(
+      "user-joined",
+      ({ userId, onlineUsers: currentOnlineUsers }) => {
+        setOnlineUsers(currentOnlineUsers);
+      }
+    );
 
-    communitySocket.on("user-left", ({ onlineUsers }) => {
-      setOnlineUsers(new Set(onlineUsers));
-    });
+    communitySocket.on(
+      "user-left",
+      ({ userId, onlineUsers: currentOnlineUsers }) => {
+        setOnlineUsers(currentOnlineUsers);
+      }
+    );
 
+    // Clean up listeners
     return () => {
       communitySocket.off("user-joined");
       communitySocket.off("user-left");
@@ -97,7 +110,9 @@ export function MembersList({ channelId }: MemberlistProps) {
                 <span className="flex-1 text-sm">{member.name}</span>
                 <div
                   className={`h-2 w-2 rounded-full ${
-                    onlineUsers.has(member._id) ? "bg-green-500" : "bg-gray-300"
+                    onlineUsers.includes(member._id)
+                      ? "bg-green-500"
+                      : "bg-gray-300"
                   }`}
                 />
               </div>

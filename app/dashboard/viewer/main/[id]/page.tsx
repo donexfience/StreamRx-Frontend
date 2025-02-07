@@ -22,7 +22,7 @@ import {
   Trash2,
   Edit,
 } from "lucide-react";
-import { useParams } from "next/navigation";
+import { useParams, usePathname, useRouter } from "next/navigation";
 import {
   useCreateCommentMutation,
   useDeleteCommentMutation,
@@ -499,6 +499,8 @@ const CommentSection = React.memo(({ videoId }: { videoId: string }) => {
 CommentSection.displayName = "CommentSection";
 
 const VideoPlayer = () => {
+  const router = useRouter();
+  const pathname = usePathname();
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -905,6 +907,11 @@ const VideoPlayer = () => {
   const subscribers = videoData?.channelId?.subscribersCount;
   console.log(subscribers, "subscribers");
 
+  const handleNavigateToCommunity = () => {
+    const newPath = pathname.split("/").slice(0, -1).join("/") + "/community";
+    router.push(newPath);
+  };
+
   return (
     <div className="flex flex-col lg:flex-row bg-black min-h-screen w-full">
       <div className="flex-1 xl:max-w-[calc(100%-400px)]">
@@ -1023,6 +1030,17 @@ const VideoPlayer = () => {
                     ? "Subscribed"
                     : "Subscribe"}
                 </Button>
+
+                {subscriptionStatus?.isSubscribed && (
+                  <Button
+                    onClick={() =>
+                      router.push("/dashboard/viewer/main/community")
+                    }
+                    className="rounded-full font-medium bg-white text-black"
+                  >
+                    Go to Community
+                  </Button>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <div className="flex bg-gray-800 rounded-full">

@@ -171,7 +171,7 @@ const StreamerLogin = () => {
 
           {/* Footer Links */}
           <div className="flex items-center justify-between text-sm">
-            <a href="#" className="text-gray-600 hover:text-blue-600">
+            <a href="/sign-up" className="text-gray-600 hover:text-blue-600">
               New to StreamRx? <span className="text-blue-600">Sign up</span>
             </a>
             <a href="#" className="text-blue-600 hover:text-blue-700">
