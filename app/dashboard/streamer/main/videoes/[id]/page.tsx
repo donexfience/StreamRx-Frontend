@@ -517,9 +517,30 @@ const VideoPlayer = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout>();
   const progressBarRef = useRef<HTMLDivElement>(null);
+  const [buffered, setBuffered] = useState<any>([]);
 
   const params = useParams();
   const id = params.id as string;
+
+  useEffect(() => {
+    if (!videoRef.current) return;
+
+    const handleProgress = () => {
+      const video = videoRef.current;
+      const bufferedRanges = [];
+      for (let i = 0; video && i < video.buffered.length; i++) {
+        bufferedRanges.push({
+          start: (video.buffered.start(i) / video.duration) * 100,
+          end: (video.buffered.end(i) / video.duration) * 100,
+        });
+      }
+      setBuffered(bufferedRanges);
+    };
+
+    videoRef.current.addEventListener("progress", handleProgress);
+    return () =>
+      videoRef.current?.removeEventListener("progress", handleProgress);
+  }, []);
 
   const formatTime = useCallback((time: number) => {
     const hours = Math.floor(time / 3600);
@@ -776,19 +797,25 @@ const VideoPlayer = () => {
       >
         <div
           ref={progressBarRef}
-          className="relative h-1 group cursor-pointer mb-3"
           onClick={handleProgressBarClick}
+          className="relative h-1 group cursor-pointer mb-3"
         >
           <div className="absolute inset-0 bg-gray-600 rounded-full">
+            {/* Buffered regions */}
+            {buffered.map((range: any, index: any) => (
+              <div
+                key={index}
+                className="absolute h-full bg-white/30 rounded-full"
+                style={{
+                  left: `${range.start}%`,
+                  width: `${range.end - range.start}%`,
+                }}
+              />
+            ))}
+            {/* Progress bar */}
             <div
               className="absolute inset-y-0 left-0 bg-red-600 rounded-full"
               style={{ width: `${(currentTime / duration) * 100}%` }}
-            />
-          </div>
-          <div className="absolute inset-0 -top-2 bottom-[-8px] opacity-0 group-hover:opacity-100">
-            <div
-              className="absolute h-[14px] w-[14px] bg-red-600 rounded-full -ml-[7px] top-[-5px]"
-              style={{ left: `${(currentTime / duration) * 100}%` }}
             />
           </div>
         </div>
@@ -953,6 +980,18 @@ const VideoPlayer = () => {
               onLoadedMetadata={() => {
                 setDuration(videoRef.current?.duration || 0);
                 setIsVideoLoading(false);
+              }}
+              onProgress={() => {
+                const video = videoRef.current;
+                if (!video) return;
+                const bufferedRanges = [];
+                for (let i = 0; i < video.buffered.length; i++) {
+                  bufferedRanges.push({
+                    start: (video.buffered.start(i) / video.duration) * 100,
+                    end: (video.buffered.end(i) / video.duration) * 100,
+                  });
+                }
+                setBuffered(bufferedRanges);
               }}
               onPlay={() => setIsPlaying(true)}
               onPause={() => setIsPlaying(false)}

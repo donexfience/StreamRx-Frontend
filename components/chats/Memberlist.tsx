@@ -40,6 +40,8 @@ export function MembersList({ channelId }: MemberlistProps) {
     channelId: channelId,
   });
 
+  console.log(allSubscribers, "got");
+
   useEffect(() => {
     if (allSubscribers) {
       const formattedMembers = allSubscribers.map((sub: any) => ({
@@ -98,25 +100,26 @@ export function MembersList({ channelId }: MemberlistProps) {
           </div>
           <div className="space-y-2">
             <h4 className="text-sm font-medium">Members</h4>
-            {members.map((member) => (
-              <div
-                key={member._id}
-                className="flex items-center gap-2 group px-2 py-1 rounded hover:bg-muted"
-              >
-                <Avatar className="h-8 w-8">
-                  <AvatarImage src={member.avatar} />
-                  <AvatarFallback>{member.name[0]}</AvatarFallback>
-                </Avatar>
-                <span className="flex-1 text-sm">{member.name}</span>
+            {members &&
+              members.map((member) => (
                 <div
-                  className={`h-2 w-2 rounded-full ${
-                    onlineUsers.includes(member._id)
-                      ? "bg-green-500"
-                      : "bg-gray-300"
-                  }`}
-                />
-              </div>
-            ))}
+                  key={member._id}
+                  className="flex items-center gap-2 group px-2 py-1 rounded hover:bg-muted"
+                >
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={member.avatar} />
+                    <AvatarFallback>{member?.name?.[0]}</AvatarFallback>
+                  </Avatar>
+                  <span className="flex-1 text-sm">{member.name}</span>
+                  <div
+                    className={`h-2 w-2 rounded-full ${
+                      onlineUsers.includes(member._id)
+                        ? "bg-green-500"
+                        : "bg-gray-300"
+                    }`}
+                  />
+                </div>
+              ))}
           </div>
         </div>
       </ScrollArea>

@@ -62,18 +62,14 @@ interface ChatSectionProps {
     ownerId: string; // Added ownerId to the interface
   } | null;
   currentUser: any;
-  channelMembers: Array<{
-    _id: string;
-    name: string;
-    profileImage: string;
-  }>;
+  // channelMembers: Array<{
+  //   _id: string;
+  //   name: string;
+  //   profileImage: string;
+  // }>;
 }
 
-export function ChatSection({
-  currentChannel,
-  currentUser,
-  channelMembers,
-}: ChatSectionProps) {
+export function ChatSection({ currentChannel, currentUser }: ChatSectionProps) {
   const { communitySocket } = useSocket();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState("");
@@ -101,7 +97,6 @@ export function ChatSection({
   useEffect(() => {
     if (!communitySocket || !currentChannel?.channelId || !currentUser?._id)
       return;
-
     communitySocket.emit("join-channel", {
       channelId: currentChannel.channelId,
       userId: currentUser._id,
@@ -342,11 +337,11 @@ export function ChatSection({
     setShowEmojiPicker(false);
   };
 
-  const handleMention = (user: (typeof channelMembers)[0]) => {
-    const beforeMention = newMessage.slice(0, newMessage.lastIndexOf("@"));
-    setNewMessage(beforeMention + `@${user.name} `);
-    setShowMentions(false);
-  };
+  // const handleMention = (user: (typeof channelMembers)[0]) => {
+  //   const beforeMention = newMessage.slice(0, newMessage.lastIndexOf("@"));
+  //   setNewMessage(beforeMention + `@${user.name} `);
+  //   setShowMentions(false);
+  // };
 
   const handleKeyUp = (e: React.KeyboardEvent<HTMLInputElement>) => {
     const input = e.currentTarget;
@@ -377,7 +372,7 @@ export function ChatSection({
   ) => {
     const heartReactions = reactions.filter((r) => r.emoji === "❤️");
     const totalHeartCount = heartReactions.reduce(
-      (sum, reaction) => sum + reaction.users.length,
+      (sum, reaction: any) => sum + reaction?.userId?.length,
       0
     );
     const otherReactions = reactions.filter((r) => r.emoji !== "❤️");
@@ -583,9 +578,10 @@ export function ChatSection({
 
       <ScrollArea className="flex-1 p-4 mt-12 overflow-y-auto" ref={scrollRef}>
         <div className="space-y-4">
-          {messages.map((message) => (
-            <MessageBubble key={message._id} message={message} />
-          ))}
+          {messages &&
+            messages.map((message) => (
+              <MessageBubble key={message._id} message={message} />
+            ))}
         </div>
         {typingUsers.size > 0 && (
           <div className="text-sm text-muted-foreground italic">
