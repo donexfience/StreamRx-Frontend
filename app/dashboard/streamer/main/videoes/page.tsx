@@ -64,10 +64,23 @@ const VideoListingPage = () => {
   };
 
   const handleDelete = async (video: any) => {
-    console.log(video, "video in the delete");
-    await deleteFromS3(video.s3Key);
-    deleteVideo({ videoId: video._id });
-    refetch();
+    try {
+      console.log("Deleting video:", video);
+
+      if (!video.qualities || !Array.isArray(video.qualities)) {
+        console.warn(`Skipping video ${video._id} due to missing qualities.`);
+        return;
+      }
+
+      const deletePromises = video.qualities.map((quality: any) =>
+        deleteFromS3(quality.s3Key)
+      );
+      await Promise.all(deletePromises);
+      await deleteVideo({ videoId: video._id });
+      refetch();
+    } catch (error) {
+      console.error("Error deleting video:", error);
+    }
   };
 
   const [editVideo, { isLoading: editLoading, error }] = useEditVideoMutation();
@@ -190,7 +203,7 @@ const VideoListingPage = () => {
                     className="font-medium cursor-pointer"
                     onClick={() =>
                       router.push(
-                        `/dashboard/streamer/main/videos/${video._id}`
+                        `/dashboard/streamer/main/videoes/${video._id}`
                       )
                     }
                   >
@@ -287,15 +300,7 @@ const VideoListingPage = () => {
           channelId={channelData?._id}
         />
       )}
-      {showEditModal && (
-        <EditVideoFlow
-          videoData={selectedVideo}
-          refetch={refetch}
-          onClose={() => setShowEditModal(false)}
-          onSuccess={handleVideoUpdate}
-          channelId={channelData?._id}
-        />
-      )}
+
     </div>
   );
 };

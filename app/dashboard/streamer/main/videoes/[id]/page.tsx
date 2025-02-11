@@ -26,6 +26,7 @@ import { useParams } from "next/navigation";
 import {
   useCreateCommentMutation,
   useDeleteCommentMutation,
+  useEditVideoMutation,
   useGetCommentInteractionQuery,
   useGetInteractionStatusQuery,
   useGetRepliesQuery,
@@ -49,6 +50,8 @@ import {
   useUnsubscribeFromChannelMutation,
 } from "@/redux/services/channel/channelApi";
 import { Button } from "@/components/ui/button";
+import EditVideoFlow from "@/components/modals/EditVideoUpload";
+import toast from "react-hot-toast";
 
 interface Comment {
   _id: string;
@@ -559,9 +562,133 @@ const VideoPlayer = () => {
     refetch: GetVideoRefetch,
     isLoading,
   } = useGetVideoByIdQuery({ id }, { skip: !id });
+
+  const [selectedQuality, setSelectedQuality] = useState<string>("auto");
+  const [availableQualities, setAvailableQualities] = useState<
+    Array<{
+      resolution: string;
+      bitrate: string;
+      s3Key: string;
+    }>
+  >([]);
+  const [isQualityChanging, setIsQualityChanging] = useState(false);
+  const currentTimeRef = useRef(0);
+  const networkSpeedRef = useRef(0);
+
+  const measureNetworkSpeed = useCallback(async () => {
+    const startTime = performance.now();
+    try {
+      const response = await fetch("/api/placeholder/32/32");
+      const endTime = performance.now();
+      const duration = endTime - startTime;
+      const speed = (32 * 32 * 4) / (duration / 1000);
+      networkSpeedRef.current = speed;
+    } catch (error) {
+      console.error("Error measuring network speed:", error);
+    }
+  }, []);
+
+  // Get appropriate quality based on network speed
+  const getOptimalQuality = useCallback(() => {
+    const speed = networkSpeedRef.current;
+    if (speed < 1000000) return "360p";
+    if (speed < 2500000) return "480p";
+    if (speed < 5000000) return "720p";
+    return "1080p";
+  }, []);
+
+  const loadQualityUrl = useCallback(async (s3Key: string) => {
+    try {
+      const url = await getPresignedUrl(s3Key);
+      return url;
+    } catch (error) {
+      console.error("Error getting presigned URL:", error);
+      return null;
+    }
+  }, []);
+
+  const handleQualityChange = useCallback(
+    async (quality: string) => {
+      if (!videoData?.qualities || quality === selectedQuality) return;
+
+      setIsQualityChanging(true);
+      currentTimeRef.current = videoRef.current?.currentTime || 0;
+
+      const selectedQualityData =
+        quality === "auto"
+          ? videoData.qualities.find(
+              (q: any) => q.resolution === getOptimalQuality()
+            )
+          : videoData.qualities.find((q: any) => q.resolution === quality);
+
+      if (selectedQualityData) {
+        const newUrl = await loadQualityUrl(selectedQualityData.s3Key);
+        if (newUrl) {
+          setVideoUrl(newUrl);
+          setSelectedQuality(quality);
+        }
+      }
+    },
+    [videoData, selectedQuality, getOptimalQuality, loadQualityUrl]
+  );
+
+  // Handle video load after quality change
+  useEffect(() => {
+    if (videoRef.current && isQualityChanging) {
+      const handleCanPlay = () => {
+        if (videoRef.current) {
+          videoRef.current.currentTime = currentTimeRef.current;
+          if (isPlaying) videoRef.current.play();
+          setIsQualityChanging(false);
+        }
+      };
+
+      videoRef.current.addEventListener("canplay", handleCanPlay);
+      return () =>
+        videoRef.current?.removeEventListener("canplay", handleCanPlay);
+    }
+  }, [isQualityChanging, isPlaying]);
+
+  // Initialize available qualities
+  useEffect(() => {
+    if (videoData?.qualities) {
+      setAvailableQualities([
+        { resolution: "auto", bitrate: "Adaptive", s3Key: "" },
+        ...videoData.qualities,
+      ]);
+    }
+  }, [videoData]);
+
+  // Monitor network speed periodically
+  useEffect(() => {
+    if (selectedQuality === "auto") {
+      const intervalId = setInterval(() => {
+        measureNetworkSpeed().then(() => {
+          const optimalQuality = getOptimalQuality();
+          const currentQuality = videoData?.qualities.find(
+            (q: any) => q.resolution === optimalQuality
+          );
+          if (currentQuality && videoUrl !== currentQuality.s3Key) {
+            handleQualityChange("auto");
+          }
+        });
+      }, 10000);
+
+      return () => clearInterval(intervalId);
+    }
+  }, [
+    selectedQuality,
+    measureNetworkSpeed,
+    getOptimalQuality,
+    handleQualityChange,
+    videoData,
+    videoUrl,
+  ]);
   const [sessionUser, setSessionUser] = useState<any>(null);
   const [isLoadingSession, setIsLoadingSession] = useState(true);
   console.log(videoData, "vidoedata");
+
+  
   useEffect(() => {
     const fetchSessionUser = async () => {
       try {
@@ -595,13 +722,13 @@ const VideoPlayer = () => {
   useEffect(() => {
     const fetchVideoUrl = async () => {
       setIsVideoLoading(true);
-      if (videoData?.s3Key) {
-        const url = await getPresignedUrl(videoData.s3Key);
+      if (videoData?.qualities?.[0].s3Key) {
+        const url = await getPresignedUrl(videoData?.qualities?.[0].s3Key);
         setVideoUrl(url);
       }
     };
     fetchVideoUrl();
-  }, [videoData?.s3Key]);
+  }, [videoData?.qualities?.[0].s3Key]);
 
   const handleLike = async () => {
     try {
@@ -646,21 +773,6 @@ const VideoPlayer = () => {
     useUnsubscribeFromChannelMutation();
   const isLoadings = statusLoading || subscribeLoading || unsubscribeLoading;
 
-  const handleSubscriptionToggle = async () => {
-    try {
-      if (subscriptionStatus?.isSubscribed) {
-        await unsubscribe({ userId, channelId }).unwrap();
-      } else {
-        await subscribe({ userId, channelId }).unwrap();
-      }
-
-      // Force refetch both subscription status and video data
-      await Promise.all([subscriptionStatusfetch(), GetVideoRefetch()]);
-      console.log(subscriptionStatus.isSubscribed, "status of susbription");
-    } catch (error) {
-      console.error("Failed to toggle subscription:", error);
-    }
-  };
   const togglePlay = useCallback(() => {
     if (!videoRef.current) return;
     if (isPlaying) {
@@ -882,20 +994,22 @@ const VideoPlayer = () => {
               {showQualityMenu && (
                 <div className="absolute right-0 bottom-full mb-2 bg-black/90 rounded p-2 min-w-[200px]">
                   <div className="text-white text-sm p-2">Quality</div>
-                  {["1080p", "720p", "480p", "360p"].map((quality) => (
+                  {availableQualities.map((quality) => (
                     <button
-                      key={quality}
+                      key={quality.resolution}
                       className={`w-full text-left p-2 text-sm hover:bg-gray-800 ${
-                        currentQuality === quality
+                        selectedQuality === quality.resolution
                           ? "text-blue-500"
                           : "text-white"
                       }`}
                       onClick={() => {
-                        setCurrentQuality(quality);
+                        handleQualityChange(quality.resolution);
                         setShowQualityMenu(false);
                       }}
                     >
-                      {quality}
+                      {quality.resolution}
+                      {quality.resolution === "auto" &&
+                        ` (${getOptimalQuality()})`}
                     </button>
                   ))}
                 </div>
@@ -931,6 +1045,31 @@ const VideoPlayer = () => {
   const channelName = videoData?.channelId?.channelName;
   const subscribers = videoData?.channelId?.subscribersCount;
   console.log(subscribers, "subscribers");
+
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedVideo, setSelectedVideo] = useState<any>(null);
+  const handleEditClick = (video: any) => {
+    setSelectedVideo(video);
+    setShowEditModal(true);
+  };
+
+  const [editVideo, { isLoading: editLoading, error }] = useEditVideoMutation();
+
+  const handleVideoUpdate = async (updatedData: any) => {
+    try {
+      console.log("Video updated with data:", updatedData);
+      const response = await editVideo({
+        videoId: updatedData._id,
+        updateData: updatedData,
+      }).unwrap();
+      toast.success("video updated succesfully");
+      console.log("Video updated successfully:", response);
+      setShowEditModal(false);
+    } catch (error) {
+      console.error("error", error);
+      toast.error("failed to update video");
+    }
+  };
 
   return (
     <div className="flex flex-col lg:flex-row bg-white min-h-screen w-full ml-32">
@@ -1044,7 +1183,12 @@ const VideoPlayer = () => {
                     {`${subscribers} subscribers` || "1M subscribers"}
                   </p>
                 </div>
-                <Button className="rounded-lg bg-blue-600">Edit video</Button>
+                <Button
+                  className="rounded-lg bg-blue-600"
+                  onClick={() => handleEditClick(videoData)}
+                >
+                  Edit video
+                </Button>
               </div>
               <div className="flex items-center gap-2">
                 <div className="flex bg-gray-800 rounded-full">
@@ -1093,6 +1237,15 @@ const VideoPlayer = () => {
 
         <CommentSection videoId={id} />
       </div>
+      {showEditModal && (
+        <EditVideoFlow
+          videoData={selectedVideo}
+          refetch={GetVideoRefetch}
+          onClose={() => setShowEditModal(false)}
+          onSuccess={handleVideoUpdate}
+          channelId={channelId}
+        />
+      )}
     </div>
   );
 };

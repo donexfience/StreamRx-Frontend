@@ -91,6 +91,7 @@ const PlaylistPage: React.FC = () => {
   const handleDelete = async (playlist: any) => {
     console.log(playlist, "video in the delete");
     deletePlaylist({ playlistId: playlist._id });
+
     refetch();
   };
 

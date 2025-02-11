@@ -30,6 +30,12 @@ import { useGetPlaylistByQueryQuery } from "@/redux/services/channel/plalylistAp
 import { uploadToCloudinary } from "@/app/lib/action/user";
 
 // Types
+
+interface ProcessingOptions {
+  resolution: string;
+  bitrate: string;
+  fps: number;
+}
 interface VideoFormData {
   title: string;
   description: string;
@@ -264,7 +270,6 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
     if (!validateForm()) {
       return;
     }
-
     setIsUploading(true);
     setUploadProgress(0);
     setErrors({});
@@ -274,36 +279,97 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
       if (formData.ThumbnailFile) {
         thumbnailUrl = await uploadThumbnail(formData.ThumbnailFile);
       }
+
       if (!selectedFile || !channelId) {
         throw new Error("No file selected or channel ID missing");
       }
 
       setUploadProgress(10);
+
       const buffer = await selectedFile.arrayBuffer();
       const base64Video = Buffer.from(buffer).toString("base64");
       const videoId = Date.now().toString();
+      const filesToCleanup: string[] = [];
 
-      const { outputPath, metadata } = await processVideo(base64Video, videoId);
+      const { outputPaths, metadata } = await processVideo(
+        base64Video,
+        videoId
+      );
+      console.log("Output paths received:", outputPaths);
+      filesToCleanup.push(...Object.values(outputPaths));
+
       setUploadProgress(50);
 
-      const processedVideoBuffer = await readAndProcessVideo(outputPath);
-      const s3Key = `videos/${channelId}/${videoId}/processed.mp4`;
-      setUploadProgress(70);
+      const PROCESSING_OPTIONS = [
+        { resolution: "1080p", bitrate: "4000k", fps: 30 },
+        { resolution: "720p", bitrate: "2500k", fps: 30 },
+        { resolution: "480p", bitrate: "1000k", fps: 30 },
+        { resolution: "360p", bitrate: "600k", fps: 30 },
+      ] as const;
 
-      const fileUrl = await uploadToS3(
-        processedVideoBuffer,
-        s3Key,
-        "video/mp4"
+      const qualities = await Promise.all(
+        PROCESSING_OPTIONS.map(async (option) => {
+          const { resolution } = option;
+          const outputPath = outputPaths[resolution.toLowerCase()];
+
+          console.log(`Processing ${resolution}, path:`, outputPath);
+
+          if (!outputPath) {
+            console.warn(`No output path found for resolution: ${resolution}`);
+            return null;
+          }
+
+          try {
+            const processedVideoBuffer = await readAndProcessVideo(outputPath);
+
+            if (!processedVideoBuffer || processedVideoBuffer.length === 0) {
+              console.error(`Empty or invalid buffer for ${resolution}`);
+              return null;
+            }
+
+            const s3Key = `videos/${channelId}/${videoId}/${resolution}.mp4`;
+            const fileUrl = await uploadToS3(
+              processedVideoBuffer,
+              s3Key,
+              "video/mp4"
+            );
+
+            return {
+              resolution,
+              bitrate: option.bitrate,
+              size: processedVideoBuffer.length,
+              url: fileUrl,
+              s3Key,
+            };
+          } catch (error) {
+            console.error(`Error processing ${resolution} version:`, error);
+            return null;
+          }
+        })
       );
-      setUploadProgress(80);
+
+      console.log("All qualities processed:", qualities);
+
+      const validQualities = qualities.filter(
+        (q): q is NonNullable<typeof q> => q !== null
+      );
+      console.log("Valid qualities:", validQualities);
+
+      if (validQualities.length === 0) {
+        throw new Error("Failed to process any video qualities");
+      }
+
+      setUploadProgress(70);
 
       const videoData = {
         channelId,
         title: formData.title,
         description: formData.description,
         visibility: formData.visibility,
-        fileUrl,
-        s3Key,
+        qualities: validQualities,
+        defaultQuality: validQualities.some((q) => q.resolution === "720p")
+          ? "720p"
+          : validQualities[0].resolution,
         thumbnailUrl,
         status: "processing",
         processingProgress: 0,
@@ -314,18 +380,13 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
           fps: metadata.fps,
           duration: metadata.duration,
         },
-        quality: {
-          resolution: "720p",
-          bitrate: "1500k",
-          size: processedVideoBuffer.length,
-        },
         tags: formData.tags,
         category: formData.category,
-        videourl: fileUrl,
         selectedPlaylist: selectedPlaylist.map((playlist) => playlist._id),
       };
 
       setUploadProgress(90);
+
       const uploadedVideo = await uploadVideo({
         ...videoData,
         subtitles: formData.subtitles,
@@ -333,13 +394,13 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
         cards: formData.cards,
       }).unwrap();
 
-      await cleanup([outputPath]);
       setUploadProgress(100);
       onSuccess(videoData);
       toast.success("Video uploaded successfully");
       refetch();
       onClose();
     } catch (error: any) {
+      console.error("Upload error:", error);
       setErrors({
         general:
           error.data?.message || "Failed to upload video. Please try again.",

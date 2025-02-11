@@ -28,7 +28,7 @@ export const getPresignedUrl = async (key: string): Promise<string> => {
   try {
     const presignedUrl = await s3.getSignedUrlPromise("getObject", {
       Bucket: process.env.AWS_S3_BUCKET!,
-      Key: key, // The key of the object in the S3 bucket
+      Key: key, 
       Expires: 60 * 60,
     });
 

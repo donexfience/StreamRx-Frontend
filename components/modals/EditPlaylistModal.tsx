@@ -195,9 +195,18 @@ const EditPlaylistModal: React.FC<EditPlaylistModalProps> = ({
     skip: !users?.email,
   });
 
-  const { data: videos, isLoading } = useGetVideoByQueryQuery(
-    { query: searchQuery ? { title: searchQuery } : {} },
-    { skip: !searchQuery }
+  const {
+    data: videos,
+    isLoading,
+    error,
+  } = useGetVideoByQueryQuery(
+    {
+      query: searchQuery ? { title: searchQuery } : {},
+      channelId: channelData?._id || "",
+    },
+    {
+      skip: !searchQuery,
+    }
   );
 
   const [uploadVideo] = useUploadVideoMutation();
@@ -214,32 +223,84 @@ const EditPlaylistModal: React.FC<EditPlaylistModalProps> = ({
       const base64Video = Buffer.from(buffer).toString("base64");
       const videoId = Date.now().toString();
 
-      const { outputPath, metadata } = await processVideo(base64Video, videoId);
-      const processedVideoBuffer = await readAndProcessVideo(outputPath);
-
-      let s3Key = "";
-      if (channelData?._id) {
-        s3Key = `videos/${channelData._id}/${videoId}/processed.mp4`;
-      } else {
-        throw new Error("Channel ID not found");
-      }
-
-      const fileUrl = await uploadToS3(
-        processedVideoBuffer,
-        s3Key,
-        "video/mp4"
+      const { outputPaths, metadata } = await processVideo(
+        base64Video,
+        videoId
       );
+      console.log("Output paths received:", outputPaths);
+
+      const PROCESSING_OPTIONS = [
+        { resolution: "1080p", bitrate: "4000k", fps: 30 },
+        { resolution: "720p", bitrate: "2500k", fps: 30 },
+        { resolution: "480p", bitrate: "1000k", fps: 30 },
+        { resolution: "360p", bitrate: "600k", fps: 30 },
+      ] as const;
+
+      const qualities = await Promise.all(
+        PROCESSING_OPTIONS.map(async (option) => {
+          const { resolution } = option;
+          const outputPath = outputPaths[resolution.toLowerCase()];
+
+          console.log(`Processing ${resolution}, path:`, outputPath);
+
+          if (!outputPath) {
+            console.warn(`No output path found for resolution: ${resolution}`);
+            return null;
+          }
+
+          try {
+            const processedVideoBuffer = await readAndProcessVideo(outputPath);
+
+            if (!processedVideoBuffer || processedVideoBuffer.length === 0) {
+              console.error(`Empty or invalid buffer for ${resolution}`);
+              return null;
+            }
+
+            const s3Key = `videos/${channelData?._id}/${videoId}/${resolution}.mp4`;
+            const fileUrl = await uploadToS3(
+              processedVideoBuffer,
+              s3Key,
+              "video/mp4"
+            );
+
+            return {
+              resolution,
+              bitrate: option.bitrate,
+              size: processedVideoBuffer.length,
+              url: fileUrl,
+              s3Key,
+            };
+          } catch (error) {
+            console.error(`Error processing ${resolution} version:`, error);
+            return null;
+          }
+        })
+      );
+
+      console.log("All qualities processed:", qualities);
+
+      const validQualities = qualities.filter(
+        (q): q is NonNullable<typeof q> => q !== null
+      );
+      console.log("Valid qualities:", validQualities);
+
+      if (validQualities.length === 0) {
+        throw new Error("Failed to process any video qualities");
+      }
 
       const uniqueName = `${formData.name}-${Date.now()}`;
 
+      // Prepare video data
       const videoData = {
-        channelId: channelData._id,
+        channelId: channelData?._id || "",
         title: uniqueName,
         description: formData.description,
+        qualities: validQualities,
         visibility: formData.visibility as "public" | "private" | "unlisted",
-        fileUrl,
-        s3Key,
         status: "processing",
+        defaultQuality: validQualities.some((q) => q.resolution === "720p")
+          ? "720p"
+          : validQualities[0].resolution,
         processingProgress: 0,
         metadata: {
           originalFileName: file.name,
@@ -248,23 +309,20 @@ const EditPlaylistModal: React.FC<EditPlaylistModalProps> = ({
           fps: metadata.fps,
           duration: metadata.duration,
         },
-        quality: {
-          resolution: "720p",
-          bitrate: "1500k",
-          size: processedVideoBuffer.length,
-        },
         thumbnailUrl: formData.thumbnailUrl,
         tags: formData.tags,
         category: formData.category,
         selectedPlaylist: [playlist._id],
-        videourl: fileUrl,
       };
 
       const response = await uploadVideo(videoData).unwrap();
-      await cleanup([outputPath]);
       setUploadedVideos((prev) => new Set(prev).add(fileId));
 
-      return { videoUrl: fileUrl, videoId: response._id };
+      return {
+        videoUrl: response?.qualities?.[0]?.s3Key,
+        videoId: response._id,
+        title: response.title || file.name,
+      };
     } catch (error) {
       console.error("Error processing and uploading video:", error);
       throw error;

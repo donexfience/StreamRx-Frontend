@@ -19,11 +19,10 @@ export const httpVideoApi = createApi({
   keepUnusedDataFor: 0,
   endpoints: (builder) => ({
     uploadVideo: builder.mutation<VideoUploadResponse, VideoUploadRequest>({
-      query: ({ videourl, channelId, ...videoData }) => ({
+      query: ({ channelId, ...videoData }) => ({
         url: `/videoes/channel/${channelId}`,
         method: "POST",
         body: {
-          videourl,
           ...videoData,
         },
         headers: {

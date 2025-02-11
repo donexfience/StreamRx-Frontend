@@ -50,7 +50,7 @@ interface EditVideoFlowProps {
     subtitles: boolean;
     endScreen: boolean;
     cards: boolean;
-    videoUrl: string;
+    qualities: any;
     s3Key: string;
   };
   onClose: () => void;
@@ -322,37 +322,31 @@ const EditVideoFlow: React.FC<EditVideoFlowProps> = ({
   ]);
 
   const { data: playlist, isLoading } = useGetPlaylistByQueryQuery(
-    { query: searchQuery ? { title: searchQuery } : {} },
+    {
+      query: searchQuery ? { title: searchQuery } : {},
+      channelId: channelId || "",
+    },
     { skip: !searchQuery }
   );
 
-  // 5. useEffects
   useEffect(() => {
     const fetchVideoUrl = async () => {
       setIsVideoLoading(true);
-      if (videoData?.s3Key) {
-        const url = await getPresignedUrl(videoData.s3Key);
+      if (videoData?.qualities?.[0]?.s3Key) {
+        const url = await getPresignedUrl(videoData?.qualities?.[0]?.s3Key);
+        console.log(url, "url of the video");
         setVideoUrl(url);
       }
     };
     fetchVideoUrl();
   }, [videoData?.s3Key]);
+  console.log(videoUrl, "video url");
 
   useEffect(() => {
     if (initialPlaylists) {
       setSelectedPlaylist(initialPlaylists);
     }
   }, [initialPlaylists]);
-  useEffect(() => {
-    const fetchVideoUrl = async () => {
-      setIsVideoLoading(true);
-      if (videoData?.s3Key) {
-        const url = await getPresignedUrl(videoData.s3Key);
-        setVideoUrl(url);
-      }
-    };
-    fetchVideoUrl();
-  }, [videoData?.s3Key]);
 
   const [categories] = useState([
     "Technology",

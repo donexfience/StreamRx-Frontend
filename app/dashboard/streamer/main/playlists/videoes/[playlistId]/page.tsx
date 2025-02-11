@@ -570,6 +570,131 @@ const VideoPlayer = () => {
   );
 
   console.log(videoData, "vidoe data");
+
+  const [selectedQuality, setSelectedQuality] = useState<string>("auto");
+  const [availableQualities, setAvailableQualities] = useState<
+    Array<{
+      resolution: string;
+      bitrate: string;
+      s3Key: string;
+    }>
+  >([]);
+  const [isQualityChanging, setIsQualityChanging] = useState(false);
+  const currentTimeRef = useRef(0);
+  const networkSpeedRef = useRef(0);
+
+  const measureNetworkSpeed = useCallback(async () => {
+    const startTime = performance.now();
+    try {
+      const response = await fetch("/api/placeholder/32/32");
+      const endTime = performance.now();
+      const duration = endTime - startTime;
+      const speed = (32 * 32 * 4) / (duration / 1000);
+      networkSpeedRef.current = speed;
+    } catch (error) {
+      console.error("Error measuring network speed:", error);
+    }
+  }, []);
+
+  // Get appropriate quality based on network speed
+  const getOptimalQuality = useCallback(() => {
+    const speed = networkSpeedRef.current;
+    if (speed < 1000000) return "360p";
+    if (speed < 2500000) return "480p";
+    if (speed < 5000000) return "720p";
+    return "1080p";
+  }, []);
+
+  const loadQualityUrl = useCallback(async (s3Key: string) => {
+    try {
+      const url = await getPresignedUrl(s3Key);
+      return url;
+    } catch (error) {
+      console.error("Error getting presigned URL:", error);
+      return null;
+    }
+  }, []);
+
+  const handleQualityChange = useCallback(
+    async (quality: string) => {
+      if (!videoData?.qualities || quality === selectedQuality) return;
+
+      setIsQualityChanging(true);
+      currentTimeRef.current = videoRef.current?.currentTime || 0;
+
+      const selectedQualityData =
+        quality === "auto"
+          ? videoData.qualities.find(
+              (q: any) => q.resolution === getOptimalQuality()
+            )
+          : videoData.qualities.find((q: any) => q.resolution === quality);
+
+      if (selectedQualityData) {
+        const newUrl = await loadQualityUrl(selectedQualityData.s3Key);
+        if (newUrl) {
+          setVideoUrl(newUrl);
+          setSelectedQuality(quality);
+        }
+      }
+    },
+    [videoData, selectedQuality, getOptimalQuality, loadQualityUrl]
+  );
+
+  // Handle video load after quality change
+  useEffect(() => {
+    if (videoRef.current && isQualityChanging) {
+      const handleCanPlay = () => {
+        if (videoRef.current) {
+          videoRef.current.currentTime = currentTimeRef.current;
+          if (isPlaying) videoRef.current.play();
+          setIsQualityChanging(false);
+        }
+      };
+
+      videoRef.current.addEventListener("canplay", handleCanPlay);
+      return () =>
+        videoRef.current?.removeEventListener("canplay", handleCanPlay);
+    }
+  }, [isQualityChanging, isPlaying]);
+
+  // Initialize available qualities
+  useEffect(() => {
+    if (videoData?.qualities) {
+      setAvailableQualities([
+        { resolution: "auto", bitrate: "Adaptive", s3Key: "" },
+        ...videoData.qualities,
+      ]);
+    }
+  }, [videoData]);
+
+  // Monitor network speed periodically
+  useEffect(() => {
+    if (selectedQuality === "auto") {
+      const intervalId = setInterval(() => {
+        measureNetworkSpeed().then(() => {
+          const optimalQuality = getOptimalQuality();
+          const currentQuality = videoData?.qualities.find(
+            (q: any) => q.resolution === optimalQuality
+          );
+          if (currentQuality && videoUrl !== currentQuality.s3Key) {
+            handleQualityChange("auto");
+          }
+        });
+      }, 10000);
+
+      return () => clearInterval(intervalId);
+    }
+  }, [
+    selectedQuality,
+    measureNetworkSpeed,
+    getOptimalQuality,
+    handleQualityChange,
+    videoData,
+    videoUrl,
+  ]);
+
+  console.log(videoData, "vidoedata");
+
   const handleNextVideo = useCallback(() => {
     if (currentPlaylistIndex < playlist.length - 1) {
       const nextVideo = playlist[currentPlaylistIndex + 1];
@@ -621,13 +746,13 @@ const VideoPlayer = () => {
   useEffect(() => {
     const fetchVideoUrl = async () => {
       setIsVideoLoading(true);
-      if (videoData?.s3Key) {
-        const url = await getPresignedUrl(videoData.s3Key);
+      if (videoData?.qualities?.[0]?.s3Key) {
+        const url = await getPresignedUrl(videoData?.qualities?.[0]?.s3Key);
         setVideoUrl(url);
       }
     };
     fetchVideoUrl();
-  }, [videoData?.s3Key]);
+  }, [videoData?.qualities?.[0]?.s3Key]);
 
   const handleLike = async () => {
     try {
@@ -928,20 +1053,22 @@ const VideoPlayer = () => {
               {showQualityMenu && (
                 <div className="absolute right-0 bottom-full mb-2 bg-black/90 rounded p-2 min-w-[200px]">
                   <div className="text-white text-sm p-2">Quality</div>
-                  {["1080p", "720p", "480p", "360p"].map((quality) => (
+                  {availableQualities.map((quality) => (
                     <button
-                      key={quality}
+                      key={quality.resolution}
                       className={`w-full text-left p-2 text-sm hover:bg-gray-800 ${
-                        currentQuality === quality
+                        selectedQuality === quality.resolution
                           ? "text-blue-500"
                           : "text-white"
                       }`}
                       onClick={() => {
-                        setCurrentQuality(quality);
+                        handleQualityChange(quality.resolution);
                         setShowQualityMenu(false);
                       }}
                     >
-                      {quality}
+                      {quality.resolution}
+                      {quality.resolution === "auto" &&
+                        ` (${getOptimalQuality()})`}
                     </button>
                   ))}
                 </div>
