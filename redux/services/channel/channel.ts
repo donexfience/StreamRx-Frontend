@@ -371,3 +371,22 @@ export interface AllPlaylistResponse {
     totalPages: number;
   };
 }
+
+export interface UserPlaylist {
+  _id: string;
+  userId: string;
+  name: string;
+  description?: string;
+  videos: {
+    videoId: VideoData;
+    addedAt: string;
+  }[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreatePlaylistUserRequest {
+  userId: string;
+  name: string;
+  description?: string;
+}

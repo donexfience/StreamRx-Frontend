@@ -21,14 +21,26 @@ import {
   ChevronRight,
   Trash2,
   Edit,
+  Save,
+  Download,
+  MoreVertical,
+  Copy,
+  Lock,
+  Plus,
+  Globe,
 } from "lucide-react";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import {
+  useAddToHistoryMutation,
+  useAddToWatchLaterMutation,
+  useAddUserVideoToPlaylistMutation,
   useCreateCommentMutation,
+  useCreateUserPlaylistMutation,
   useDeleteCommentMutation,
   useGetCommentInteractionQuery,
   useGetInteractionStatusQuery,
   useGetRepliesQuery,
+  useGetUserPlaylistsQuery,
   useGetVideoByIdQuery,
   useGetVideoCommentsQuery,
   useToggleCommentDislikeMutation,
@@ -49,6 +61,18 @@ import {
   useUnsubscribeFromChannelMutation,
 } from "@/redux/services/channel/channelApi";
 import { Button } from "@/components/ui/button";
+import toast from "react-hot-toast";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@radix-ui/react-dropdown-menu";
+import { Dialog, DialogContent, DialogTitle } from "@radix-ui/react-dialog";
+import { DialogHeader } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import useVideoHistoryTracking from "@/components/video-helpers/useVideoHistroyTracking";
 
 interface Comment {
   _id: string;
@@ -64,6 +88,13 @@ interface Comment {
   createdAt: string;
   timestamp: string;
   parentCommentId?: string;
+}
+
+interface VideoActionsProps {
+  videoId: string;
+  videoUrl: string;
+  userId: string;
+  onAddToWatchLater: () => void;
 }
 
 const ReplyInput = React.memo(
@@ -180,6 +211,7 @@ const SingleComment = React.memo(
       { commentId: comment?._id },
       { skip: !showReplies, refetchOnMountOrArgChange: true }
     );
+
     const [sessionUser, setSessionUser] = useState<any>(null);
     const [isLoadingSession, setIsLoadingSession] = useState(true);
     useEffect(() => {
@@ -498,6 +530,213 @@ const CommentSection = React.memo(({ videoId }: { videoId: string }) => {
 
 CommentSection.displayName = "CommentSection";
 
+const VideoActions: React.FC<VideoActionsProps> = ({
+  videoId,
+  videoUrl,
+  userId,
+}) => {
+  const [showPlaylistModal, setShowPlaylistModal] = useState(false);
+  const [showNewPlaylistModal, setShowNewPlaylistModal] = useState(false);
+  const [newPlaylistData, setNewPlaylistData] = useState({
+    title: "",
+    description: "",
+  });
+
+  // API Hooks
+  const [addToWatchLater, { isLoading: isAddingToWatchLater }] =
+    useAddToWatchLaterMutation();
+  const {
+    data: userPlaylists,
+    isLoading: isLoadingPlaylists,
+    refetch: UserPlaylistRefetch,
+  } = useGetUserPlaylistsQuery({ userId });
+  const [createUserPlaylist, { isLoading: isCreatingPlaylist }] =
+    useCreateUserPlaylistMutation();
+  const [addVideoToPlaylist, { isLoading: isAddingToPlaylist }] =
+    useAddUserVideoToPlaylistMutation();
+
+  const handleDownload = async () => {
+    try {
+      const response = await fetch(videoUrl);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `video-${videoId}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error("Download failed:", error);
+    }
+  };
+
+  const handleAddToWatchLater = async () => {
+    try {
+      await addToWatchLater({ userId, videoId }).unwrap();
+    } catch (error) {
+      console.error("Failed to add to watch later:", error);
+    }
+  };
+
+  const handleCreatePlaylist = async () => {
+    try {
+      const newPlaylist = await createUserPlaylist({
+        userId,
+        name: newPlaylistData.title,
+        description: newPlaylistData.description,
+      }).unwrap();
+
+      // Add video to the newly created playlist
+      await addVideoToPlaylist({
+        playlistId: newPlaylist._id,
+        videoId,
+      }).unwrap();
+
+      setShowNewPlaylistModal(false);
+      setNewPlaylistData({
+        title: "",
+        description: "",
+      });
+      UserPlaylistRefetch();
+      toast.success("video added to playlist");
+    } catch (error: any) {
+      toast.error(error?.data?.error);
+      console.error("Failed to create playlist:", error);
+    }
+  };
+
+  const handleAddToPlaylist = async (playlistId: any) => {
+    try {
+      await addVideoToPlaylist({
+        playlistId,
+        videoId,
+      }).unwrap();
+      setShowPlaylistModal(false);
+    } catch (error) {
+      console.error("Failed to add to playlist:", error);
+    }
+  };
+
+  const handleOpenNewPlaylist = () => {
+    setShowPlaylistModal(false);
+    setTimeout(() => {
+      setShowNewPlaylistModal(true);
+    }, 100);
+  };
+
+  return (
+    <>
+      <DropdownMenuContent className="min-w-[200px] bg-gray-900 border border-gray-700 rounded-lg shadow-lg p-1">
+        <DropdownMenuItem
+          className="flex items-center gap-2 px-4 py-2 text-white hover:bg-gray-800 rounded-md cursor-pointer"
+          onClick={() => setShowPlaylistModal(true)}
+        >
+          Save to Playlist
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          className="flex items-center gap-2 px-4 py-2 text-white hover:bg-gray-800 rounded-md cursor-pointer"
+          onClick={handleAddToWatchLater}
+          disabled={isAddingToWatchLater}
+        >
+          {isAddingToWatchLater ? "Adding..." : "Save to Watch Later"}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          className="flex items-center gap-2 px-4 py-2 text-white hover:bg-gray-800 rounded-md cursor-pointer"
+          onClick={handleDownload}
+        >
+          Download
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+
+      {/* Playlist Modal */}
+      <Dialog open={showPlaylistModal} onOpenChange={setShowPlaylistModal}>
+        <DialogContent className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-gray-900 text-white rounded-lg max-w-md w-full p-6">
+          <DialogHeader>
+            <DialogTitle className="font-bold text-lg pb-2">
+              Save video to...
+            </DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-y-auto">
+            {isLoadingPlaylists ? (
+              <div className="text-center py-4">Loading playlists...</div>
+            ) : userPlaylists && userPlaylists.length > 0 ? (
+              <div className="space-y-2">
+                {userPlaylists.map((playlist) => (
+                  <div
+                    key={playlist._id}
+                    className="flex items-center justify-between p-2 hover:bg-gray-800 rounded cursor-pointer"
+                    onClick={() => handleAddToPlaylist(playlist._id)}
+                  >
+                    <span>{playlist.name}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-4 text-gray-400">
+                No playlists found.
+              </div>
+            )}
+
+            <button
+              onClick={handleOpenNewPlaylist}
+              className="w-full mt-2 flex items-center justify-center text-black hover:bg-gray-800 rounded-lg bg-white p-3 font-medium  "
+            >
+              <Plus className="" />
+              Create new playlist
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* New Playlist Modal */}
+      <Dialog
+        open={showNewPlaylistModal}
+        onOpenChange={setShowNewPlaylistModal}
+      >
+        <DialogContent className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-gray-900 text-white border border-gray-700 rounded-lg max-w-md w-full p-6">
+          <DialogHeader>
+            <DialogTitle className="font-bold text-lg pb-3">
+              New playlist
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Input
+              placeholder="Title"
+              value={newPlaylistData.title}
+              onChange={(e) =>
+                setNewPlaylistData({
+                  ...newPlaylistData,
+                  title: e.target.value,
+                })
+              }
+              className="bg-gray-800 border-gray-700 text-white"
+            />
+
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                className="text-white hover:bg-gray-800"
+                onClick={() => setShowNewPlaylistModal(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+                onClick={handleCreatePlaylist}
+                disabled={!newPlaylistData.title.trim() || isCreatingPlaylist}
+              >
+                {isCreatingPlaylist ? "Creating..." : "Create"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+};
+
 const VideoPlayer = () => {
   const router = useRouter();
   const pathname = usePathname();
@@ -514,12 +753,14 @@ const VideoPlayer = () => {
   const [showQualityMenu, setShowQualityMenu] = useState(false);
   const [currentQuality, setCurrentQuality] = useState("1080p");
   const [isBuffering, setIsBuffering] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout>();
   const progressBarRef = useRef<HTMLDivElement>(null);
   const [buffered, setBuffered] = useState<any>([]);
+  const [addToWatchLater] = useAddToWatchLaterMutation();
 
   const params = useParams();
   const id = params.id as string;
@@ -543,6 +784,38 @@ const VideoPlayer = () => {
     return () =>
       videoRef.current?.removeEventListener("progress", handleProgress);
   }, []);
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(window.location.href).then(() => {
+      toast.success("Copied to clipboard!");
+    });
+  };
+
+  const downloadVideo = () => {
+    if (!videoData?.qualities?.[0].s3Key) {
+      alert("Video URL not found!");
+      return;
+    }
+
+    const link = document.createElement("a");
+    link.href = videoData?.qualities?.[0].s3Key;
+    link.download = `video.mp4`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleAddToWatchLater = async () => {
+    try {
+      await addToWatchLater({
+        userId: userData?.user?._id,
+        videoId: id,
+      }).unwrap();
+      toast.success("Added to Watch Later");
+    } catch (error) {
+      toast.error("Failed to add to Watch Later");
+    }
+  };
 
   const formatTime = useCallback((time: number) => {
     const hours = Math.floor(time / 3600);
@@ -580,7 +853,6 @@ const VideoPlayer = () => {
   const measureNetworkSpeed = useCallback(async () => {
     const startTime = performance.now();
     try {
-      const response = await fetch("/api/placeholder/32/32");
       const endTime = performance.now();
       const duration = endTime - startTime;
       const speed = (32 * 32 * 4) / (duration / 1000);
@@ -593,6 +865,7 @@ const VideoPlayer = () => {
   // Get appropriate quality based on network speed
   const getOptimalQuality = useCallback(() => {
     const speed = networkSpeedRef.current;
+    console.log(speed, "speed");
     if (speed < 1000000) return "360p";
     if (speed < 2500000) return "480p";
     if (speed < 5000000) return "720p";
@@ -667,6 +940,7 @@ const VideoPlayer = () => {
       const intervalId = setInterval(() => {
         measureNetworkSpeed().then(() => {
           const optimalQuality = getOptimalQuality();
+          console.log(optimalQuality, "quality");
           const currentQuality = videoData?.qualities.find(
             (q: any) => q.resolution === optimalQuality
           );
@@ -709,6 +983,7 @@ const VideoPlayer = () => {
     }
   );
   const userId = userData?.user?._id || "";
+  useVideoHistoryTracking(id, userId, videoRef);
   const [toggleLike] = useToggleLikeMutation();
   const [toggleDislike] = useToggleDisLikeMutation();
   const { data: interactionStatus, refetch: refetchInteraction } =
@@ -1246,10 +1521,35 @@ const VideoPlayer = () => {
                   </button>
                 </div>
                 <button className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-full">
-                  <Share2 size={20} />
-                  <span className="text-white">Share</span>
+                  <Share2 className="text-white" size={20} />
+                  <span className="text-white" onClick={copyToClipboard}>
+                    Share
+                  </span>
+                </button>
+                <button className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-full">
+                  <Save className="text-white" size={20} />
+                  <span className="text-white">save</span>
+                </button>
+                <button className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-full">
+                  <Download className="text-white" size={20} />
+                  <span className="text-white" onClick={downloadVideo}>
+                    Download
+                  </span>
                 </button>
               </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="h-8 w-8 p-0">
+                    <MoreVertical className="h-4 w-4 text-white" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <VideoActions
+                  videoId={id}
+                  videoUrl={videoUrl ?? ""}
+                  userId={userId}
+                  onAddToWatchLater={handleAddToWatchLater}
+                />
+              </DropdownMenu>
             </div>
           </div>
         </div>

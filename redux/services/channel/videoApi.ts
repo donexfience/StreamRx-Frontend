@@ -5,7 +5,9 @@ import {
   Comment,
   CommentResponse,
   CreateCommentRequest,
+  CreatePlaylistUserRequest,
   UpdateCommentRequest,
+  UserPlaylist,
   VideoData,
   VideoUploadRequest,
   VideoUploadResponse,
@@ -237,11 +239,114 @@ export const httpVideoApi = createApi({
         },
       }),
     }),
+
+    addToHistory: builder.mutation({
+      query: ({ userId, videoData }) => ({
+        url: `videocollection/history/${userId}`,
+        method: "POST",
+        body: videoData,
+      }),
+    }),
+    getHistory: builder.query({
+      query: ({ userId, page = 1, limit = 10 }) => ({
+        url: `videocollection/history/${userId}`,
+        method: "GET",
+        params: { page, limit },
+      }),
+    }),
+    removeFromHistory: builder.mutation({
+      query: ({ userId, videoId }) => ({
+        url: `videocollection/history/${userId}/${videoId}`,
+        method: "DELETE",
+      }),
+    }),
+
+    addToWatchLater: builder.mutation({
+      query: ({ userId, videoId }) => ({
+        url: `videocollection/watch-later/${userId}`,
+        method: "POST",
+        body: { videoId },
+      }),
+    }),
+    getWatchLater: builder.query({
+      query: ({ userId, page = 1, limit = 10 }) => ({
+        url: `videocollection/watch-later/${userId}`,
+        method: "GET",
+        params: { page, limit },
+      }),
+    }),
+    removeFromWatchLater: builder.mutation({
+      query: ({ userId, videoId }) => ({
+        url: `videocollection/watch-later/${userId}/${videoId}`,
+        method: "DELETE",
+      }),
+    }),
+
+    createUserPlaylist: builder.mutation<
+      UserPlaylist,
+      CreatePlaylistUserRequest
+    >({
+      query: ({ userId, ...playlistData }) => ({
+        url: `/user-playlist/${userId}`,
+        method: "POST",
+        body: playlistData,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }),
+    }),
+
+    getUserPlaylists: builder.query<UserPlaylist[], { userId: string }>({
+      query: ({ userId }) => ({
+        url: `user-playlist/user/${userId}`,
+        method: "GET",
+      }),
+    }),
+
+    getUserPlaylistById: builder.query<UserPlaylist, { playlistId: string }>({
+      query: ({ playlistId }) => ({
+        url: `user-playlist/${playlistId}`,
+        method: "GET",
+      }),
+    }),
+
+    addUserVideoToPlaylist: builder.mutation<
+      UserPlaylist,
+      { playlistId: string; videoId: string }
+    >({
+      query: ({ playlistId, videoId }) => ({
+        url: `user-playlist/${playlistId}/videos`,
+        method: "POST",
+        body: { videoId },
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }),
+    }),
+
+    removeUserVideoFromPlaylist: builder.mutation<
+      UserPlaylist,
+      { playlistId: string; videoId: string }
+    >({
+      query: ({ playlistId, videoId }) => ({
+        url: `user-playlist/${playlistId}/videos/${videoId}`,
+        method: "DELETE",
+      }),
+    }),
+
+    deleteUserPlaylist: builder.mutation<void, { playlistId: string }>({
+      query: ({ playlistId }) => ({
+        url: `user-playlist/${playlistId}`,
+        method: "DELETE",
+      }),
+    }),
   }),
 });
 
 export const {
   useUploadVideoMutation,
+  useGetUserPlaylistByIdQuery,
+  useGetUserPlaylistsQuery,
   useCreateCommentMutation,
   useEditVideoMutation,
   useDeleteCommentMutation,
@@ -261,4 +366,14 @@ export const {
   useGetCommentInteractionQuery,
   useToggleCommentDislikeMutation,
   useToggleCommentLikeMutation,
+  useAddToHistoryMutation,
+  useAddToWatchLaterMutation,
+  useGetHistoryQuery,
+  useGetWatchLaterQuery,
+  useRemoveFromHistoryMutation,
+  useRemoveFromWatchLaterMutation,
+  useAddUserVideoToPlaylistMutation,
+  useCreateUserPlaylistMutation,
+  useDeleteUserPlaylistMutation,
+  useRemoveUserVideoFromPlaylistMutation,
 } = httpVideoApi;
