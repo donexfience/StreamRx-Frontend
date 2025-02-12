@@ -269,10 +269,10 @@ export const httpVideoApi = createApi({
       }),
     }),
     getWatchLater: builder.query({
-      query: ({ userId, page = 1, limit = 10 }) => ({
+      query: ({ userId, page = 1, limit = 10, searchQuery = "" }) => ({
         url: `videocollection/watch-later/${userId}`,
         method: "GET",
-        params: { page, limit },
+        params: { page, limit, search: searchQuery },
       }),
     }),
     removeFromWatchLater: builder.mutation({
