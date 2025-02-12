@@ -39,13 +39,13 @@ const ViewerNavbar: React.FC = () => {
       id: "watch-later",
       label: "Watch Later",
       icon: <FaClock className="h-5 w-5" />,
-      path: "/watch-later",
+      path: "/dashboard/viewer/main/watch-later",
     },
     {
       id: "history",
       label: "History",
       icon: <FaHistory className="h-5 w-5" />,
-      path: "/history",
+      path: "/dashboard/viewer/main/watch-history",
     },
   ];
 

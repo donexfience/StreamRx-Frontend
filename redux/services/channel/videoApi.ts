@@ -340,6 +340,35 @@ export const httpVideoApi = createApi({
         method: "DELETE",
       }),
     }),
+    getRelatedVideos: builder.query<
+      {
+        playlistVideos: VideoData[];
+        relatedVideos: VideoData[];
+        currentPlaylist?: {
+          _id: string;
+          name: string;
+          thumbnailUrl: string;
+        };
+      },
+      { videoId: string }
+    >({
+      query: ({ videoId }) => ({
+        url: `/videoes/${videoId}/related`,
+        method: "GET",
+      }),
+      transformResponse: (response: {
+        success: boolean;
+        data: {
+          playlistVideos: VideoData[];
+          relatedVideos: VideoData[];
+          currentPlaylist?: {
+            _id: string;
+            name: string;
+            thumbnailUrl: string;
+          };
+        };
+      }) => response.data,
+    }),
   }),
 });
 
@@ -376,4 +405,5 @@ export const {
   useDeleteUserPlaylistMutation,
   useRemoveUserVideoFromPlaylistMutation,
   useRemoveFromHistoryMutation,
+  useGetRelatedVideosQuery,
 } = httpVideoApi;
