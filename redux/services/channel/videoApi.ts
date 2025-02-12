@@ -248,10 +248,10 @@ export const httpVideoApi = createApi({
       }),
     }),
     getHistory: builder.query({
-      query: ({ userId, page = 1, limit = 10 }) => ({
+      query: ({ userId, page = 1, limit = 10, searchQuery = "" }) => ({
         url: `videocollection/history/${userId}`,
         method: "GET",
-        params: { page, limit },
+        params: { page, limit, search: searchQuery },
       }),
     }),
     removeFromHistory: builder.mutation({
@@ -370,10 +370,10 @@ export const {
   useAddToWatchLaterMutation,
   useGetHistoryQuery,
   useGetWatchLaterQuery,
-  useRemoveFromHistoryMutation,
   useRemoveFromWatchLaterMutation,
   useAddUserVideoToPlaylistMutation,
   useCreateUserPlaylistMutation,
   useDeleteUserPlaylistMutation,
   useRemoveUserVideoFromPlaylistMutation,
+  useRemoveFromHistoryMutation,
 } = httpVideoApi;

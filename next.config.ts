@@ -9,6 +9,10 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "500mb",
     },
   },
+
+  images: {
+    domains: ['res.cloudinary.com'],
+  },
   // Optional: Configure allowed hosts if needed
   headers: async () => {
     return [
