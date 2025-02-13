@@ -21,10 +21,19 @@ import {
   AtSign,
   Send,
   Crown,
+  MoreVertical,
+  Trash,
 } from "lucide-react";
 import data from "@emoji-mart/data";
 import Picker from "@emoji-mart/react";
 import { uploadToCloudinary } from "@/app/lib/action/user";
+import { useGetChannelMessagesQuery } from "@/redux/services/community/communityApi";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 
 interface ChatMessage {
   _id: string;
@@ -71,7 +80,6 @@ interface ChatSectionProps {
 
 export function ChatSection({ currentChannel, currentUser }: ChatSectionProps) {
   const { communitySocket } = useSocket();
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [typingUsers, setTypingUsers] = useState<
     Map<string, { name: string; timestamp: number }>
@@ -88,48 +96,40 @@ export function ChatSection({ currentChannel, currentUser }: ChatSectionProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLInputElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout>();
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(100);
 
-  useEffect(() => {
-    // Clear messages when channel changes
-    setMessages([]);
-  }, [currentChannel?.channelId]);
+  const {
+    data: messagesData,
+    refetch: refetchMessages,
+    isLoading,
+  } = useGetChannelMessagesQuery(
+    { channelId: currentChannel?.channelId || "", page, limit },
+    { skip: !currentChannel?.channelId }
+  );
+
+  console.log(messagesData, "message data got from rtk");
 
   useEffect(() => {
     if (!communitySocket || !currentChannel?.channelId || !currentUser?._id)
       return;
+
     communitySocket.emit("join-channel", {
       channelId: currentChannel.channelId,
       userId: currentUser._id,
     });
 
-    communitySocket.emit("get-message-history", {
-      channelId: currentChannel.channelId,
-    });
-
-    const handleMessageHistory = (history: ChatMessage[]) => {
-      const validMessages = (history || []).filter(
-        (msg) =>
-          msg && msg._id && msg.senderId && typeof msg.content === "string"
-      );
-      setMessages(validMessages);
-      setTimeout(() => scrollToBottom(), 100);
+    const handleNewMessage = () => {
+      refetchMessages();
+      scrollToBottom();
     };
 
-    const handleNewMessage = (message: ChatMessage) => {
-      if (message && message._id && message.senderId) {
-        setMessages((prev) => [...prev, message]);
-        scrollToBottom();
-      }
+    const handleMessageDeleted = () => {
+      refetchMessages();
     };
 
-    const handleReactionUpdate = (updatedMessage: ChatMessage) => {
-      console.log(updatedMessage, "message updated");
-      if (!updatedMessage?._id) return;
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg._id === updatedMessage._id ? updatedMessage : msg
-        )
-      );
+    const handleReactionUpdate = () => {
+      refetchMessages();
     };
 
     const handleTypingStart = ({
@@ -139,17 +139,12 @@ export function ChatSection({ currentChannel, currentUser }: ChatSectionProps) {
       userId: string;
       userName: string;
     }) => {
-      console.log("Typing start received:", { userId, userName });
       setTypingUsers((prev) => {
-        console.log("Previous typing users:", Array.from(prev.entries()));
         const newMap = new Map(prev);
         newMap.set(userId, { name: userName, timestamp: Date.now() });
-        console.log("New typing users:", Array.from(newMap.entries()));
         return newMap;
       });
     };
-
-    console.log(typingUsers, "user  typing");
 
     const handleTypingStop = ({ userId }: { userId: string }) => {
       setTypingUsers((prev) => {
@@ -172,28 +167,43 @@ export function ChatSection({ currentChannel, currentUser }: ChatSectionProps) {
       });
     }, 5000);
 
-    communitySocket.on("message-history", handleMessageHistory);
     communitySocket.on("new-message", handleNewMessage);
+    communitySocket.on("message-deleted", handleMessageDeleted);
     communitySocket.on("message-reaction-updated", handleReactionUpdate);
     communitySocket.on("user-typing", handleTypingStart);
     communitySocket.on("user-stopped-typing", handleTypingStop);
 
     return () => {
-      if (communitySocket && currentChannel?.channelId && currentUser?._id) {
-        communitySocket.emit("leave-channel", {
-          channelId: currentChannel.channelId,
-          userId: currentUser._id,
-        });
-      }
-
       clearInterval(typingCleanupInterval);
-      communitySocket.off("message-history", handleMessageHistory);
       communitySocket.off("new-message", handleNewMessage);
+      communitySocket.off("message-deleted", handleMessageDeleted);
       communitySocket.off("message-reaction-updated", handleReactionUpdate);
       communitySocket.off("user-typing", handleTypingStart);
       communitySocket.off("user-stopped-typing", handleTypingStop);
     };
-  }, [communitySocket, currentChannel?.channelId, currentUser?._id, isEditing]);
+  }, [
+    communitySocket,
+    currentChannel?.channelId,
+    currentUser?._id,
+    refetchMessages,
+  ]);
+
+  const handleDeleteMessage = (messageId: string) => {
+    if (!communitySocket || !currentChannel?.channelId) return;
+
+    communitySocket.emit("delete-message", {
+      messageId,
+      channelId: currentChannel.channelId,
+      userId: currentUser._id,
+    });
+  };
+
+  const canDeleteForEveryone = (message: ChatMessage) => {
+    return (
+      message.senderId._id === currentUser._id ||
+      currentChannel?.ownerId === currentUser._id
+    );
+  };
 
   const scrollToMessage = (messageId: string) => {
     const messageElement = document.getElementById(`message-${messageId}`);
@@ -205,7 +215,6 @@ export function ChatSection({ currentChannel, currentUser }: ChatSectionProps) {
       }, 2000);
     }
   };
-  console.log(messages, "messages");
 
   const handleTyping = () => {
     if (!communitySocket || !currentChannel?.channelId || !currentUser?._id)
@@ -263,6 +272,7 @@ export function ChatSection({ currentChannel, currentUser }: ChatSectionProps) {
 
     communitySocket.emit("send-message", messageData);
     setNewMessage("");
+    refetchMessages();
     setReplyingTo(null);
   };
 
@@ -282,6 +292,7 @@ export function ChatSection({ currentChannel, currentUser }: ChatSectionProps) {
       emoji,
       channelId: currentChannel.channelId,
     });
+    refetchMessages();
   };
 
   if (!currentChannel || !currentUser) {
@@ -545,6 +556,29 @@ export function ChatSection({ currentChannel, currentUser }: ChatSectionProps) {
                       <Edit2 className="h-4 w-4" />
                     </Button>
                   )}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm">
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      className={`${
+                        canDeleteForEveryone(message) ? "" : "hidden"
+                      }`}
+                    >
+                      {canDeleteForEveryone(message) ? (
+                        <DropdownMenuItem
+                          onClick={() => handleDeleteMessage(message._id)}
+                        >
+                          <Trash className="h-4 w-4 mr-2" />
+                          Delete for everyone
+                        </DropdownMenuItem>
+                      ) : (
+                        <div></div>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </div>
             </div>
@@ -578,8 +612,8 @@ export function ChatSection({ currentChannel, currentUser }: ChatSectionProps) {
 
       <ScrollArea className="flex-1 p-4 mt-12 overflow-y-auto" ref={scrollRef}>
         <div className="space-y-4">
-          {messages &&
-            messages.map((message) => (
+          {messagesData &&
+            messagesData.data.messages.map((message) => (
               <MessageBubble key={message._id} message={message} />
             ))}
         </div>

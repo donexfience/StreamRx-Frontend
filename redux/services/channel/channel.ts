@@ -69,6 +69,7 @@ export interface getChannelResponse {
   schedulePreference: string;
   streamSchedule: StreamSchedule;
   socialLinks: SocialLinks;
+  ownerId: string;
   createdAt: string;
   updatedAt: string;
 }

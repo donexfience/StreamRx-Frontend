@@ -4,7 +4,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Link, Settings } from "lucide-react";
-
 import { useEffect, useState } from "react";
 import { useSocket } from "@/hooks/useSocket";
 import { useGetAllSubscribersByChannelIdQuery } from "@/redux/services/community/communityApi";
@@ -18,20 +17,10 @@ interface Member {
 
 interface MemberlistProps {
   channelId: string;
+  currentUser: any;
 }
 
-interface Member {
-  _id: string;
-  name: string;
-  avatar: string;
-  status: "online" | "offline";
-}
-
-interface MemberlistProps {
-  channelId: string;
-}
-
-export function MembersList({ channelId }: MemberlistProps) {
+export function MembersList({ channelId, currentUser }: MemberlistProps) {
   const { communitySocket } = useSocket();
   const [members, setMembers] = useState<Member[]>([]);
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
@@ -39,8 +28,7 @@ export function MembersList({ channelId }: MemberlistProps) {
   const { data: allSubscribers } = useGetAllSubscribersByChannelIdQuery({
     channelId: channelId,
   });
-
-  console.log(allSubscribers, "got");
+  console.log(currentUser, "current user");
 
   useEffect(() => {
     if (allSubscribers) {
@@ -48,35 +36,57 @@ export function MembersList({ channelId }: MemberlistProps) {
         _id: sub.userId._id,
         name: sub.userId.username,
         avatar: sub.userId.profileImageURL || "",
-        status: "offline",
+        status: onlineUsers.includes(sub.userId._id) ? "online" : "offline",
       }));
       setMembers(formattedMembers);
     }
-  }, [allSubscribers]);
+  }, [allSubscribers, onlineUsers]);
 
   useEffect(() => {
-    if (!communitySocket) return;
+    if (!communitySocket || !channelId) return;
 
-    communitySocket.on(
-      "user-joined",
-      ({ userId, onlineUsers: currentOnlineUsers }) => {
-        setOnlineUsers(currentOnlineUsers);
-      }
-    );
+    communitySocket.emit("join-channel", {
+      channelId: channelId,
+      userId: currentUser._id || "",
+    });
 
-    communitySocket.on(
-      "user-left",
-      ({ userId, onlineUsers: currentOnlineUsers }) => {
-        setOnlineUsers(currentOnlineUsers);
-      }
-    );
-
-    // Clean up listeners
-    return () => {
-      communitySocket.off("user-joined");
-      communitySocket.off("user-left");
+    const handleUserJoined = ({
+      userId,
+      onlineUsers: currentOnlineUsers,
+    }: {
+      userId: string;
+      onlineUsers: string[];
+    }) => {
+      console.log("User joined:", userId, "Online users:", currentOnlineUsers);
+      setOnlineUsers(currentOnlineUsers);
     };
-  }, [communitySocket]);
+
+    const handleUserLeft = ({
+      userId,
+      onlineUsers: currentOnlineUsers,
+    }: {
+      userId: string;
+      onlineUsers: string[];
+    }) => {
+      console.log("User left:", userId, "Online users:", currentOnlineUsers);
+      setOnlineUsers(currentOnlineUsers);
+    };
+
+    communitySocket.on("user-joined", handleUserJoined);
+    communitySocket.on("user-left", handleUserLeft);
+
+    communitySocket.emit("get-online-users", { channelId });
+
+    return () => {
+      communitySocket.off("user-joined", handleUserJoined);
+      communitySocket.off("user-left", handleUserLeft);
+
+      communitySocket.emit("leave-channel", {
+        channelId: channelId,
+        userId: currentUser._id || "",
+      });
+    };
+  }, [communitySocket, channelId, allSubscribers]);
 
   return (
     <div className="w-60 border-l h-screen">
@@ -100,26 +110,25 @@ export function MembersList({ channelId }: MemberlistProps) {
           </div>
           <div className="space-y-2">
             <h4 className="text-sm font-medium">Members</h4>
-            {members &&
-              members.map((member) => (
+            {members.map((member) => (
+              <div
+                key={member._id}
+                className="flex items-center gap-2 group px-2 py-1 rounded hover:bg-muted"
+              >
+                <Avatar className="h-8 w-8">
+                  <AvatarImage src={member.avatar} />
+                  <AvatarFallback>{member?.name?.[0]}</AvatarFallback>
+                </Avatar>
+                <span className="flex-1 text-sm">{member.name}</span>
                 <div
-                  key={member._id}
-                  className="flex items-center gap-2 group px-2 py-1 rounded hover:bg-muted"
-                >
-                  <Avatar className="h-8 w-8">
-                    <AvatarImage src={member.avatar} />
-                    <AvatarFallback>{member?.name?.[0]}</AvatarFallback>
-                  </Avatar>
-                  <span className="flex-1 text-sm">{member.name}</span>
-                  <div
-                    className={`h-2 w-2 rounded-full ${
-                      onlineUsers.includes(member._id)
-                        ? "bg-green-500"
-                        : "bg-gray-300"
-                    }`}
-                  />
-                </div>
-              ))}
+                  className={`h-2 w-2 rounded-full ${
+                    onlineUsers.includes(member._id)
+                      ? "bg-green-500"
+                      : "bg-gray-300"
+                  }`}
+                />
+              </div>
+            ))}
           </div>
         </div>
       </ScrollArea>

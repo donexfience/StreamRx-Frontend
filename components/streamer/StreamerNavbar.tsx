@@ -1,5 +1,5 @@
 "use client";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   LayoutGrid,
   MapPin,
@@ -12,12 +12,27 @@ import {
   LogOut,
 } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
-import { clearAuthCookie } from "@/app/lib/action/auth";
+import { clearAuthCookie, getUserFromCookies } from "@/app/lib/action/auth";
+import { useGetChannelByEmailQuery } from "@/redux/services/channel/channelApi";
 
 export default function StreamerNavbar() {
   const router = useRouter();
   const pathname = usePathname();
+  const [users, setUsers] = useState<any>(null);
+  const {
+    data: channelData,
+    isLoading,
+    isError,
+  } = useGetChannelByEmailQuery(users?.email, { skip: !users?.email });
 
+  useEffect(() => {
+    const fetchData = async () => {
+      const decodeUser = await getUserFromCookies();
+      console.log(decodeUser, "decoded user");
+      setUsers(decodeUser.user);
+    };
+    fetchData();
+  }, []);
   const navItems = [
     { icon: <LayoutGrid size={20} />, path: "/dashboard", label: "Dashboard" },
     {
@@ -32,7 +47,7 @@ export default function StreamerNavbar() {
     },
     {
       icon: <Thermometer size={20} />,
-      path: "/temperature",
+      path: `/dashboard/streamer/main/community/`,
       label: "Temperature",
     },
     { icon: <Timer size={20} />, path: "/timer", label: "Timer" },

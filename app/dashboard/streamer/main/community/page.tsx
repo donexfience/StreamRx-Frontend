@@ -1,78 +1,114 @@
 "use client";
-
 import { ChatSection } from "@/components/chats/chatArea";
 import { MembersList } from "@/components/chats/Memberlist";
-import { ServerSidebar } from "@/components/chats/SideBar";
-import { SidebarProvider } from "@/components/ui/sidebar";
 import { useEffect, useState } from "react";
-import { io } from "socket.io-client";
-import * as React from "react";
-import {
-  Hash,
-  Music,
-  Users,
-  Crown,
-  Radio,
-  Heart,
-  Bell,
-  GamepadIcon,
-  Settings,
-} from "lucide-react";
+import { Twitch, Youtube, Settings } from "lucide-react";
+import { getUserFromCookies } from "@/app/lib/action/auth";
+import { useGetAllSubscribersByChannelIdQuery } from "@/redux/services/community/communityApi";
+import { useGetUserQuery } from "@/redux/services/user/userApi";
+import { useGetChannelByEmailQuery } from "@/redux/services/channel/channelApi";
+
+interface Channel {
+  label: string;
+  icon: any;
+  imageUrl: string;
+  category: string;
+  channelId: string;
+  ownerId: string;
+}
 
 export default function Chat() {
-  const [socket, setSocket] = useState<any>(null);
-  const channels = [
-    { label: "Announcement", icon: Bell },
-    { label: "Support", icon: Heart },
-    { label: "Mabar Santuy", icon: GamepadIcon },
-    { label: "Just Music", icon: Music },
-    { label: "General", icon: Hash },
-    { label: "Live Stream", icon: Radio },
-    { label: "Pro Player Only", icon: Crown },
-    { label: "Party Santuy", icon: Users },
-  ];
+  const [users, setUsers] = useState<any>(null);
+  const [activeChannel, setActiveChannel] = useState<Channel | null>(null);
 
   useEffect(() => {
-    const socket = io("http://localhost:4000");
-    setSocket(socket);
-
-    return () => {
-      socket.disconnect();
+    const fetchData = async () => {
+      try {
+        const decodeUser = await getUserFromCookies();
+        setUsers(decodeUser.user);
+      } catch (error) {
+        console.error("Error fetching user data:", error);
+      }
     };
+    fetchData();
   }, []);
 
+  const { data: userData } = useGetUserQuery(
+    { email: users?.email },
+    {
+      skip: !users?.email,
+    }
+  );
+
+  const {
+    data: channelData,
+    isLoading: channelLoading,
+    isError: channelError,
+  } = useGetChannelByEmailQuery(users?.email ?? "", {
+    skip: !users?.email,
+  });
+
+  useEffect(() => {
+    if (channelData) {
+      const channel = {
+        label: channelData.channelName,
+        icon: channelData.integrations.twitch
+          ? Twitch
+          : channelData.integrations.youtube
+          ? Youtube
+          : Youtube, // Default to Youtube if neither Twitch nor Discord
+        imageUrl: channelData.channelProfileImageUrl,
+        category: channelData.category?.[0] || "Uncategorized",
+        channelId: channelData._id,
+        ownerId: channelData.ownerId,
+      };
+      setActiveChannel(channel);
+    }
+  }, [channelData]);
+
+  const { data: allSubscribers } = useGetAllSubscribersByChannelIdQuery(
+    {
+      channelId: activeChannel?.channelId || "",
+    },
+    {
+      skip: !activeChannel?.channelId || activeChannel.channelId === "",
+      refetchOnMountOrArgChange: true,
+    }
+  );
+
+  if (channelLoading) {
+    return (
+      <div className="flex justify-center items-center h-screen bg-white">
+        Loading...
+      </div>
+    );
+  }
+
+  if (channelError) {
+    return (
+      <div className="flex justify-center items-center h-screen bg-white">
+        Error loading channel data.
+      </div>
+    );
+  }
+
   return (
-    <div
-      className="flex h-screen bg-background justify-between ml-32
-    "
-    >
-      <div className="w-96 h-screen bg-white shadow-lg ">
-        <div className="py-6">
-          {channels.map((channel, index) => (
-            <div
-              key={index}
-              className={`flex items-center justify-between px-8 py-4 group ${
-                index === 4 ? "bg-gray-200" : "hover:bg-gray-100"
-              } rounded-lg transition`}
-            >
-              <div className="flex items-center gap-3">
-                <channel.icon className="h-5 w-5 text-gray-600" />
-                <span className="text-sm font-medium text-gray-800">
-                  {channel.label}
-                </span>
-              </div>
-              <button className="opacity-0 group-hover:opacity-100 transition">
-                <Settings className="h-4 w-4 text-gray-500" />
-              </button>
-            </div>
-          ))}
+    <div className="flex h-screen overflow-hidden text-gray-800 w-full ml-32 bg-white">
+      <div className="flex-1 flex flex-col bg-white border-l border-r border-gray-200 overflow-hidden">
+        <div className="flex-1 overflow-y-auto">
+          <ChatSection
+            currentChannel={activeChannel}
+            currentUser={userData?.user}
+          />
         </div>
       </div>
 
-      <div className="">
-        <ChatSection />
+      <div className="w-72 h-full bg-white shadow-lg p-4 border-l border-gray-200">
+        <MembersList
+          currentUser={userData?.user}
+          channelId={activeChannel?.channelId || ""}
+        />
       </div>
-      <MembersList />
     </div>
   );
 }
