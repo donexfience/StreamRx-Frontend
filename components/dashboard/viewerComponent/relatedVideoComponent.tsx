@@ -1,7 +1,7 @@
 import React from "react";
 import { formatDistanceToNow } from "date-fns";
 import { PlayCircle } from "lucide-react";
-import { useRouter } from "next/router";
+import { useRouter } from "next/navigation";
 import { useGetRelatedVideosQuery } from "@/redux/services/channel/videoApi";
 
 const RelatedVideos: React.FC<{ currentVideoId: any }> = ({
@@ -12,6 +12,7 @@ const RelatedVideos: React.FC<{ currentVideoId: any }> = ({
     videoId: currentVideoId,
   });
 
+  console.log(data, "realted video got ");
   const formatViews = (count: any) => {
     if (count >= 1000000) {
       return `${(count / 1000000).toFixed(1)}M views`;
@@ -29,7 +30,11 @@ const RelatedVideos: React.FC<{ currentVideoId: any }> = ({
   };
 
   const handleVideoClick = (videoId: any) => {
-    router.push(`/watch/${videoId}`);
+    router.push(`/dashboard/viewer/main/${videoId}`);
+  };
+
+  const handlePlaylistClick = (playlistId: any) => {
+    router.push(`/dashboard/viewer/main/playlist/videoes/${playlistId}`);
   };
 
   if (isLoading) {
@@ -62,11 +67,16 @@ const RelatedVideos: React.FC<{ currentVideoId: any }> = ({
             </h3>
           </div>
 
-          {data.playlistVideos.map((video) => (
+          {data.playlistVideos.map((video: any) => (
             <div
               key={video._id}
               className="flex items-start space-x-3 mb-4 group cursor-pointer"
-              onClick={() => handleVideoClick(video._id)}
+              onClick={() => {
+                if (data.currentPlaylist && data.currentPlaylist._id) {
+                  console.log(data.currentPlaylist._id);
+                  handlePlaylistClick(data.currentPlaylist._id);
+                }
+              }}
             >
               <div className="relative flex-shrink-0">
                 <img
@@ -119,7 +129,7 @@ const RelatedVideos: React.FC<{ currentVideoId: any }> = ({
             </div>
 
             <div className="flex-grow">
-              <h4 className="text-sm font-medium line-clamp-2 group-hover:text-blue-600">
+              <h4 className="text-sm font-medium line-clamp-2 group-hover:text-blue-600 text-white">
                 {video.title}
               </h4>
               <p className="text-xs text-gray-500 mt-1">

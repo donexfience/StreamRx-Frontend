@@ -353,7 +353,7 @@ export const httpVideoApi = createApi({
       { videoId: string }
     >({
       query: ({ videoId }) => ({
-        url: `/videoes/${videoId}/related`,
+        url: `videoes/videos/${videoId}/related`,
         method: "GET",
       }),
       transformResponse: (response: {
