@@ -88,6 +88,7 @@ export interface VideoUploadRequest {
   category: string;
   tags: string[];
   thumbnailUrl: string;
+  videoType: "normal" | "short";
 }
 
 export interface VideoMetadata {
@@ -167,6 +168,7 @@ export interface VideoData {
   channelName: string;
   subscribers: number;
   length?: any;
+  commentsCount: any;
 }
 
 export interface Comment {

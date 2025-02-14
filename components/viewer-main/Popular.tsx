@@ -5,6 +5,7 @@ import { StreamerCard } from "./cards/StreamerCard";
 import { useGetVideoRecommendationQuery } from "@/redux/services/recommendation/recommendationApi";
 import { getUserFromCookies } from "@/app/lib/action/auth";
 import { useRouter } from "next/navigation";
+import { getPresignedUrl } from "@/app/lib/action/s3";
 
 const Popular = () => {
   const router = useRouter();
@@ -12,6 +13,9 @@ const Popular = () => {
   const videoRowRef = useRef<HTMLDivElement>(null);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const [showRightArrow, setShowRightArrow] = useState(true);
+  const [hoveredVideoId, setHoveredVideoId] = useState<string | null>(null);
+  const [hoveredVideoUrl, setHoveredVideoUrl] = useState<string | null>(null);
+  const [isLoadingVideo, setIsLoadingVideo] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -59,7 +63,28 @@ const Popular = () => {
     data: recommendations,
     isLoading,
     isError,
-  } = useGetVideoRecommendationQuery(users?.email);
+  } = useGetVideoRecommendationQuery(users?.email, {
+    skip: !users?.email,
+  });
+
+  const handleVideoHover = async (videoId: string, s3Key: string) => {
+    setIsLoadingVideo(true);
+    setHoveredVideoId(videoId);
+
+    try {
+      const url = await getPresignedUrl(s3Key);
+      setHoveredVideoUrl(url);
+    } catch (error) {
+      console.error("Error fetching video URL:", error);
+    } finally {
+      setIsLoadingVideo(false);
+    }
+  };
+
+  const handleVideoLeave = () => {
+    setHoveredVideoId(null);
+    setHoveredVideoUrl(null);
+  };
 
   const formatCount = (count: number) => {
     if (!count) return "0";
@@ -135,14 +160,13 @@ const Popular = () => {
           </div>
           <button
             className="text-gray-400 hover:text-white dark:hover:text-black flex items-center gap-1"
-            onClick={() => router.push("/dashboard/viewer/recommendations")}
+            onClick={() => scrollVideos("right")}
           >
             SEE MORE
             <ArrowRight size={16} />
           </button>
         </div>
 
-        {/* Video Carousel */}
         <div className="relative">
           {showLeftArrow && (
             <button
@@ -160,7 +184,7 @@ const Popular = () => {
               <ArrowRight size={24} />
             </button>
           )}
-          {/* Video Cards Container */}
+
           <div
             ref={videoRowRef}
             className="flex gap-4 overflow-x-hidden scroll-smooth p-6 w-full"
@@ -168,10 +192,11 @@ const Popular = () => {
             {recommendations?.data?.map((video: any) => (
               <div
                 key={video._id}
-                onClick={() =>
-                  router.push(`/dashboard/viewer/main/${video._id}`)
+                className="flex-none w-64 min-w-[256px] bg-gray-900 dark:bg-gray-100 rounded-lg overflow-hidden group hover:transform hover:scale-105 transition-all duration-200 cursor-pointer relative"
+                onMouseEnter={() =>
+                  handleVideoHover(video._id, video.qualities[0].s3Key)
                 }
-                className="flex-none w-64 min-w-[256px] bg-gray-900 dark:bg-gray-100 rounded-lg overflow-hidden group hover:transform hover:scale-105 transition-all duration-200 cursor-pointer"
+                onMouseLeave={handleVideoLeave}
               >
                 <div className="relative">
                   <img
@@ -185,6 +210,22 @@ const Popular = () => {
                     </div>
                   )}
                 </div>
+
+                {hoveredVideoId === video._id && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                    {isLoadingVideo ? (
+                      <div className="w-12 h-12 border-4 border-gray-300 border-t-blue-500 rounded-full animate-spin" />
+                    ) : (
+                      <video
+                        src={hoveredVideoUrl || undefined}
+                        autoPlay
+                        muted
+                        loop
+                        className="w-full h-full object-cover"
+                      />
+                    )}
+                  </div>
+                )}
 
                 <div className="p-3 space-y-2">
                   <div className="flex items-start space-x-2">

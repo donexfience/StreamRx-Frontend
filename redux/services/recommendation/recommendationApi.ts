@@ -15,7 +15,18 @@ export const httpRecommendationApi = createApi({
         };
       },
     }),
+    getShortRecommendation: builder.query<AllVideoUploadResponse, string>({
+      query: (email) => {
+        return {
+          url: `/recommendation/recommendations/shorts/${email}`,
+          method: "GET",
+        };
+      },
+    }),
   }),
 });
 
-export const { useGetVideoRecommendationQuery } = httpRecommendationApi;
+export const {
+  useGetVideoRecommendationQuery,
+  useGetShortRecommendationQuery,
+} = httpRecommendationApi;

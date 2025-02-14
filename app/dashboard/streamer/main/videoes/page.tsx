@@ -42,6 +42,8 @@ const VideoListingPage = () => {
     isError,
   } = useGetChannelByEmailQuery(users?.email, { skip: !users?.email });
 
+  console.log(channelData?._id, "channel data in the video listing stramer");
+
   const {
     data: videos,
     refetch,
@@ -300,7 +302,15 @@ const VideoListingPage = () => {
           channelId={channelData?._id}
         />
       )}
-
+      {showEditModal && (
+        <EditVideoFlow
+          refetch={refetch}
+          videoData={selectedVideo}
+          onClose={() => setShowEditModal(false)}
+          onSuccess={handleVideoUpdate}
+          channelId={channelData?._id}
+        />
+      )}
     </div>
   );
 };

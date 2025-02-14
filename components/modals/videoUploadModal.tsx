@@ -28,6 +28,13 @@ import { uploadToS3 } from "@/app/lib/action/s3";
 import toast from "react-hot-toast";
 import { useGetPlaylistByQueryQuery } from "@/redux/services/channel/plalylistApi";
 import { uploadToCloudinary } from "@/app/lib/action/user";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 
 // Types
 
@@ -46,6 +53,7 @@ interface VideoFormData {
   tags: string[];
   category: string;
   ThumbnailFile?: File | null;
+  videoType: "normal" | "short";
 }
 
 interface ValidationErrors {
@@ -56,6 +64,7 @@ interface ValidationErrors {
   category?: string;
   tags?: string;
   ThumbnailFile?: string;
+  duration?: string;
 }
 
 interface Playlist {
@@ -133,6 +142,7 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
   const [isPlaylistSearchOpen, setIsPlaylistSearchOpen] = useState(false);
   const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist[]>([]);
   const [customCategory, setCustomCategory] = useState("");
+  const [preview, setPreview] = useState("");
   const [categories] = useState([
     "Technology",
     "Health",
@@ -151,6 +161,7 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
     ThumbnailFile: null as File | null,
     cards: false,
     category: "",
+    videoType: "normal",
   });
 
   const { data: playlist, isLoading } = useGetPlaylistByQueryQuery(
@@ -162,7 +173,25 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
   );
 
   console.log(playlist, "playlists got");
-  const validateFile = (file: File): string | null => {
+
+  const checkVideoDuration = (file: File): Promise<number> => {
+    return new Promise((resolve, reject) => {
+      const video = document.createElement("video");
+      video.preload = "metadata";
+
+      video.onloadedmetadata = () => {
+        window.URL.revokeObjectURL(video.src);
+        resolve(video.duration);
+      };
+
+      video.onerror = () => {
+        reject("Error loading video file");
+      };
+
+      video.src = URL.createObjectURL(file);
+    });
+  };
+  const validateFile = async (file: File): Promise<string | null> => {
     const allowedTypes = ["video/mp4", "video/quicktime", "video/x-msvideo"];
 
     if (!file) {
@@ -177,10 +206,41 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
       return `File size should be less than ${maxFileSize / (1024 * 1024)}MB`;
     }
 
+    try {
+      const duration = await checkVideoDuration(file);
+      if (formData.videoType === "short" && duration > 60) {
+        return "Shorts must be 60 seconds or less";
+      }
+    } catch (error) {
+      console.error("Error checking video duration:", error);
+      return "Error validating video duration";
+    }
+
     return null;
   };
 
-  const validateForm = (): boolean => {
+  const UploadProgress = () => (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white p-8 rounded-lg shadow-xl w-96">
+        <div className="text-center mb-4">
+          <CircularProgress progress={uploadProgress} />
+          <h3 className="text-lg font-semibold mt-4">Uploading Video</h3>
+          <p className="text-gray-600 text-sm mt-2">
+            {uploadProgress < 100
+              ? "Please wait while your video is being uploaded..."
+              : "Upload complete!"}
+          </p>
+        </div>
+        <div className="w-full bg-gray-200 rounded-full h-2 mt-4">
+          <div
+            className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+            style={{ width: `${uploadProgress}%` }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+  const validateForm = async (): Promise<boolean> => {
     const newErrors: ValidationErrors = {};
 
     // Title validation
@@ -191,8 +251,9 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
     }
 
     // Description validation
-    if (formData.description.length > 5000) {
-      newErrors.description = "Description must be less than 5000 characters";
+    if (!formData.description.trim() || formData.description.length > 5000) {
+      newErrors.description =
+        "Description must be added and less than 5000 characters";
     }
 
     // Category validation
@@ -207,18 +268,23 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
       newErrors.tags = "Maximum 10 tags allowed";
     }
 
+    if (!formData.ThumbnailFile) {
+      newErrors.ThumbnailFile = "Please upload thumbnail";
+    }
+
     // File validation
     if (!selectedFile) {
       newErrors.file = "Please select a video file";
     } else {
-      const fileError = validateFile(selectedFile);
+      const fileError = await validateFile(selectedFile);
       if (fileError) {
         newErrors.file = fileError;
       }
     }
 
+    console.log(newErrors, "new error state");
+
     setErrors(newErrors);
-    console.log(errors, "errors of form video upload");
     return Object.keys(newErrors).length === 0;
   };
 
@@ -235,7 +301,9 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
     return imageurl;
   };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const files = event.target.files;
     setErrors({});
 
@@ -245,11 +313,25 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
     }
 
     const file = files[0];
-    const fileError = validateFile(file);
+    const fileError = await validateFile(file);
 
     if (fileError) {
       setErrors({ file: fileError });
       return;
+    }
+
+    if (formData.videoType === "short") {
+      try {
+        const duration = await checkVideoDuration(file);
+        if (duration > 60) {
+          setErrors({ file: "Shorts must be 60 seconds or less" });
+          return;
+        }
+      } catch (error) {
+        console.error("Error checking video duration:", error);
+        setErrors({ file: "Error validating video duration" });
+        return;
+      }
     }
 
     setSelectedFile(file);
@@ -267,13 +349,30 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
   };
 
   const handleSubmit = async () => {
-    if (!validateForm()) {
+    const isValid = await validateForm();
+    console.log(isValid, "valid function return");
+
+    if (!isValid) {
       return;
     }
+
     setIsUploading(true);
     setUploadProgress(0);
     setErrors({});
-
+    if (formData.videoType === "short" && selectedFile) {
+      try {
+        const duration = await checkVideoDuration(selectedFile);
+        if (duration > 60) {
+          setErrors({ file: "Shorts must be 60 seconds or less" });
+          return;
+        }
+      } catch (error) {
+        console.error("Error checking video duration:", error);
+        setErrors({ file: "Error validating video duration" });
+        return;
+      }
+    }
+    console.log(errors, "erros ");
     try {
       let thumbnailUrl = "";
       if (formData.ThumbnailFile) {
@@ -383,6 +482,7 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
         tags: formData.tags,
         category: formData.category,
         selectedPlaylist: selectedPlaylist.map((playlist) => playlist._id),
+        videoType: formData.videoType,
       };
 
       setUploadProgress(90);
@@ -441,6 +541,7 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
   };
 
   const renderError = (error: string | undefined) => {
+    console.log("eror", error);
     if (!error) return null;
     return (
       <Alert variant="destructive" className="mt-2 mb-4">
@@ -489,6 +590,16 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
 
     setFormData((prev) => ({ ...prev, ThumbnailFile: file }));
     setErrors((prev) => ({ ...prev, ThumbnailFile: undefined }));
+
+    // Create preview URL
+    const previewUrl = URL.createObjectURL(file);
+    setPreview(previewUrl);
+  };
+
+  const handleRemove = () => {
+    setFormData((prev) => ({ ...prev, ThumbnailFile: null }));
+    setPreview("");
+    setErrors((prev) => ({ ...prev, ThumbnailFile: undefined }));
   };
 
   // Floating Icons Component
@@ -507,6 +618,39 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
           </div>
         </div>
       </div>
+    </div>
+  );
+
+  const renderVideoTypeSelection = () => (
+    <div className="mb-6">
+      <label className="block text-sm font-bold mb-2 text-blue-600">
+        Video Type
+      </label>
+      <Select
+        value={formData.videoType}
+        onValueChange={(value: "normal" | "short") => {
+          setFormData((prev) => ({ ...prev, videoType: value }));
+          // Clear  existing file when changing video type
+          if (selectedFile) {
+            setSelectedFile(null);
+            if (fileInputRef.current) {
+              fileInputRef.current.value = "";
+            }
+          }
+        }}
+      >
+        <SelectTrigger className="w-full bg-blue-300 border border-black">
+          <SelectValue placeholder="Select video type" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem className="text-lg text-red-600" value="normal">
+            Normal Video
+          </SelectItem>
+          <SelectItem className="text-red-600" value="short">
+            Short Video
+          </SelectItem>
+        </SelectContent>
+      </Select>
     </div>
   );
 
@@ -530,7 +674,8 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
           <div className="p-10">
             {renderError(errors.general)}
             <div>
-              <p className="mb-3 font-bold text-lg">Upload your video here</p>
+              <p className="mb-3 font-bold text-xl">Upload your video here</p>
+              {renderVideoTypeSelection()}
               <div className="border-2 border-blue-400 border-dashed rounded-lg p-8">
                 <div className="flex flex-col items-center">
                   <input
@@ -759,47 +904,66 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
                   </h2>
                   <div className="border-2 border-dashed rounded-lg p-6 ">
                     <div className="text-center">
-                      <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                        <svg
-                          className="w-6 h-6 text-purple-600"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                      {!preview ? (
+                        <>
+                          <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                            <svg
+                              className="w-6 h-6 text-purple-600"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                              />
+                            </svg>
+                          </div>
+                          <div className="text-sm text-gray-600 mb-4">
+                            Upload thumbnail
+                            <br />
+                            <span className="text-xs text-gray-500">
+                              Maximum file size: 10 MB
+                            </span>
+                          </div>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            id="thumbnail-upload"
+                            onChange={handleThumbnailChange}
                           />
-                        </svg>
-                      </div>
-                      <div className="text-sm text-gray-600 mb-4">
-                        Upload thumbnail
-                        <br />
-                        <span className="text-xs text-gray-500">
-                          Maximum file size: 10 MB
-                        </span>
-                      </div>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        id="thumbnail-upload"
-                        onChange={handleThumbnailChange}
-                      />
-                      <label
-                        htmlFor="thumbnail-upload"
-                        className="px-4 py-2 bg-purple-600 text-white rounded-lg cursor-pointer hover:bg-purple-700"
-                      >
-                        Choose file
-                      </label>
+                          <label
+                            htmlFor="thumbnail-upload"
+                            className="px-4 py-2 bg-purple-600 text-white rounded-lg cursor-pointer hover:bg-purple-700"
+                          >
+                            Choose file
+                          </label>
+                        </>
+                      ) : (
+                        <div className="relative w-48 h-48 mx-auto">
+                          <img
+                            src={preview}
+                            alt="Thumbnail preview"
+                            className="w-full h-full object-cover rounded-lg"
+                          />
+                          <button
+                            onClick={handleRemove}
+                            className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+
                       {errors.ThumbnailFile && (
                         <p className="mt-2 text-sm text-red-500">
                           {errors.ThumbnailFile}
                         </p>
                       )}
-                      {formData.ThumbnailFile && (
+                      {formData.ThumbnailFile && !preview && (
                         <div className="mt-2 text-sm text-gray-600">
                           Selected: {formData.ThumbnailFile.name}
                         </div>
@@ -1011,7 +1175,7 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
                   <div className="flex items-center space-x-2">
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                     <span className="text-blue-500 font-bold">
-                      Uploading...
+                      Upload progress: {uploadProgress}%
                     </span>
                   </div>
                 ) : (
