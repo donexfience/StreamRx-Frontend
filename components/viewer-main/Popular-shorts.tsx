@@ -205,6 +205,9 @@ const PopularShorts = () => {
               <div
                 key={short._id}
                 className="flex-none w-44 min-w-[176px] bg-gray-900 rounded-lg overflow-hidden group hover:transform hover:scale-105 transition-all duration-200 cursor-pointer relative"
+                onClick={() =>
+                  router.replace(`/dashboard/viewer/main/shorts/${short._id}`)
+                }
                 onMouseEnter={() =>
                   handleVideoHover(short._id, short.qualities[0].s3Key)
                 }

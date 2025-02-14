@@ -196,6 +196,9 @@ const Popular = () => {
                 onMouseEnter={() =>
                   handleVideoHover(video._id, video.qualities[0].s3Key)
                 }
+                onClick={() =>
+                  router.push(`/dashboard/viewer/main/${video._id}`)
+                }
                 onMouseLeave={handleVideoLeave}
               >
                 <div className="relative">
