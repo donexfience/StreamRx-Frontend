@@ -33,9 +33,9 @@ export function MembersList({ channelId, currentUser }: MemberlistProps) {
   useEffect(() => {
     if (allSubscribers) {
       const formattedMembers = allSubscribers.map((sub: any) => ({
-        _id: sub.userId._id,
+        _id: sub.userId?._id,
         name: sub.userId.username,
-        avatar: sub.userId.profileImageURL || "",
+        avatar: sub.userId?.profileImageURL || "",
         status: onlineUsers.includes(sub.userId._id) ? "online" : "offline",
       }));
       setMembers(formattedMembers);
@@ -47,7 +47,7 @@ export function MembersList({ channelId, currentUser }: MemberlistProps) {
 
     communitySocket.emit("join-channel", {
       channelId: channelId,
-      userId: currentUser._id || "",
+      userId: currentUser?._id || "",
     });
 
     const handleUserJoined = ({
@@ -83,7 +83,7 @@ export function MembersList({ channelId, currentUser }: MemberlistProps) {
 
       communitySocket.emit("leave-channel", {
         channelId: channelId,
-        userId: currentUser._id || "",
+        userId: currentUser?._id || "",
       });
     };
   }, [communitySocket, channelId, allSubscribers]);
@@ -112,11 +112,11 @@ export function MembersList({ channelId, currentUser }: MemberlistProps) {
             <h4 className="text-sm font-medium">Members</h4>
             {members.map((member) => (
               <div
-                key={member._id}
+                key={member?._id}
                 className="flex items-center gap-2 group px-2 py-1 rounded hover:bg-muted"
               >
                 <Avatar className="h-8 w-8">
-                  <AvatarImage src={member.avatar} />
+                  <AvatarImage src={member?.avatar} />
                   <AvatarFallback>{member?.name?.[0]}</AvatarFallback>
                 </Avatar>
                 <span className="flex-1 text-sm">{member.name}</span>

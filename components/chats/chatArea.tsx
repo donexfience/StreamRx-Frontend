@@ -116,7 +116,7 @@ export function ChatSection({ currentChannel, currentUser }: ChatSectionProps) {
 
     communitySocket.emit("join-channel", {
       channelId: currentChannel.channelId,
-      userId: currentUser._id,
+      userId: currentUser?._id,
     });
 
     const handleNewMessage = () => {
@@ -194,14 +194,14 @@ export function ChatSection({ currentChannel, currentUser }: ChatSectionProps) {
     communitySocket.emit("delete-message", {
       messageId,
       channelId: currentChannel.channelId,
-      userId: currentUser._id,
+      userId: currentUser?._id,
     });
   };
 
   const canDeleteForEveryone = (message: ChatMessage) => {
     return (
-      message.senderId._id === currentUser._id ||
-      currentChannel?.ownerId === currentUser._id
+      message.senderId?._id === currentUser?._id ||
+      currentChannel?.ownerId === currentUser?._id
     );
   };
 
@@ -222,7 +222,7 @@ export function ChatSection({ currentChannel, currentUser }: ChatSectionProps) {
 
     communitySocket.emit("typing-started", {
       channelId: currentChannel.channelId,
-      userId: currentUser._id,
+      userId: currentUser?._id,
       userName: currentUser.name,
     });
 
@@ -234,7 +234,7 @@ export function ChatSection({ currentChannel, currentUser }: ChatSectionProps) {
       if (communitySocket && currentChannel?.channelId && currentUser?._id) {
         communitySocket.emit("typing-stopped", {
           channelId: currentChannel.channelId,
-          userId: currentUser._id,
+          userId: currentUser?._id,
         });
       }
     }, 1000);
@@ -260,12 +260,12 @@ export function ChatSection({ currentChannel, currentUser }: ChatSectionProps) {
 
     const messageData = {
       channelId: currentChannel.channelId,
-      senderId: currentUser._id,
+      senderId: currentUser?._id,
       content: newMessage,
       messageType: "text",
       ...(replyingTo && {
         replyTo: {
-          _id: replyingTo._id,
+          _id: replyingTo?._id,
         },
       }),
     };
@@ -288,7 +288,7 @@ export function ChatSection({ currentChannel, currentUser }: ChatSectionProps) {
 
     communitySocket.emit("react-to-message", {
       messageId,
-      userId: currentUser._id,
+      userId: currentUser?._id,
       emoji,
       channelId: currentChannel.channelId,
     });
@@ -314,7 +314,7 @@ export function ChatSection({ currentChannel, currentUser }: ChatSectionProps) {
 
       communitySocket?.emit("send-message", {
         channelId: currentChannel?.channelId,
-        senderId: currentUser._id,
+        senderId: currentUser?._id,
         content: "",
         messageType: "image",
         fileUrl,
@@ -403,11 +403,11 @@ export function ChatSection({ currentChannel, currentUser }: ChatSectionProps) {
   };
 
   const MessageBubble = ({ message }: { message: ChatMessage }) => {
-    const isCurrentUser = message.senderId._id === currentUser._id;
+    const isCurrentUser = message.senderId?._id === currentUser?._id;
 
     return (
       <div
-        id={`message-${message._id}`}
+        id={`message-${message?._id}`}
         className={`space-y-2 transition-colors duration-300 rounded-lg p-2 ${
           message.replyTo ? "ml-2" : ""
         } ${isCurrentUser ? "ml-auto max-w-[80%]" : "mr-auto max-w-[80%]"}`}
@@ -451,7 +451,7 @@ export function ChatSection({ currentChannel, currentUser }: ChatSectionProps) {
             >
               <span className="font-semibold flex items-center gap-1">
                 {message.senderId?.username || "Unknown User"}
-                {currentChannel?.ownerId === message.senderId._id && (
+                {currentChannel?.ownerId === message.senderId?._id && (
                   <Crown className="h-4 w-4 text-yellow-500" />
                 )}
               </span>
@@ -461,13 +461,13 @@ export function ChatSection({ currentChannel, currentUser }: ChatSectionProps) {
               </span>
             </div>
 
-            {isEditing === message._id ? (
+            {isEditing === message?._id ? (
               <div className="flex gap-2">
                 <Input
                   defaultValue={message.content}
                   onKeyPress={(e) => {
                     if (e.key === "Enter") {
-                      handleEditMessage(message._id, e.currentTarget.value);
+                      handleEditMessage(message?._id, e.currentTarget.value);
                     }
                   }}
                 />
@@ -517,9 +517,9 @@ export function ChatSection({ currentChannel, currentUser }: ChatSectionProps) {
                 {consolidateReactions(message.reactions).map(
                   (reaction, index) => (
                     <button
-                      key={`${message._id}-${reaction.emoji}-${index}`}
+                      key={`${message?._id}-${reaction.emoji}-${index}`}
                       onClick={() =>
-                        handleReaction(message._id, reaction.emoji)
+                        handleReaction(message?._id, reaction.emoji)
                       }
                       className="flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-100"
                     >

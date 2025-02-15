@@ -189,41 +189,41 @@ const WatchLaterPage = () => {
             </h2>
             <div className="space-y-6">
               {videos.map((item: WatchLaterVideo) => (
-                <div key={item.videoId._id} className="flex gap-6 group">
+                <div key={item.videoId?._id} className="flex gap-6 group">
                   <Link
-                    href={`/watch/${item.videoId._id}`}
+                    href={`/watch/${item.videoId?._id}`}
                     className="flex-shrink-0"
                   >
                     <div className="relative w-64 h-36">
                       <Image
-                        src={item.videoId.thumbnailUrl}
-                        alt={item.videoId.title}
+                        src={item.videoId?.thumbnailUrl}
+                        alt={item.videoId?.title}
                         fill
                         className="object-cover rounded-lg"
                       />
-                      {item.videoId.metadata?.duration && (
+                      {item.videoId?.metadata?.duration && (
                         <div className="absolute bottom-2 right-2 bg-black bg-opacity-80 px-2 py-1 rounded text-xs">
-                          {formatDuration(item.videoId.metadata.duration)}
+                          {formatDuration(item.videoId?.metadata.duration)}
                         </div>
                       )}
                     </div>
                   </Link>
                   <div className="flex-1">
-                    <Link href={`/watch/${item.videoId._id}`}>
+                    <Link href={`/watch/${item.videoId?._id}`}>
                       <h3 className="font-semibold text-lg text-white hover:text-blue-400 transition-colors">
-                        {item.videoId.title}
+                        {item.videoId?.title}
                       </h3>
                     </Link>
-                    <Link href={`/channel/${item.videoId.channelId._id}`}>
+                    <Link href={`/channel/${item.videoId?.channelId._id}`}>
                       <p className="text-gray-400 hover:text-gray-300 text-sm mt-2">
-                        {item.videoId.channelId.name}
+                        {item.videoId?.channelId.name}
                       </p>
                     </Link>
                     <div className="flex items-center gap-2 text-sm text-gray-400 mt-2">
-                      <span>{item.videoId.category}</span>
+                      <span>{item.videoId?.category}</span>
                       <span>•</span>
                       <span>
-                        {item.videoId.engagement.viewCount.toLocaleString()}{" "}
+                        {item.videoId?.engagement.viewCount.toLocaleString()}{" "}
                         views
                       </span>
                       <span>•</span>

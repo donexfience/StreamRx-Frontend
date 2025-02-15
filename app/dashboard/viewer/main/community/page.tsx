@@ -43,9 +43,9 @@ export default function Chat() {
   );
 
   const { data: channelData } = useGetAllSubscribedChannelByUserIdQuery(
-    { userId: userData?.user._id || "" },
+    { userId: userData?.user?._id || "" },
     {
-      skip: !userData?.user._id,
+      skip: !userData?.user?._id,
     }
   );
 
@@ -59,10 +59,10 @@ export default function Chat() {
         : channel.channelId.integrations.discord
         ? Youtube
         : Hash,
-      imageUrl: channel.channelId.channelProfileImageUrl,
+      imageUrl: channel.channelId?.channelProfileImageUrl,
       category: channel.channelId.category?.[0],
-      channelId: channel.channelId._id,
-      ownerId: channel.channelId.ownerId,
+      channelId: channel.channelId?._id,
+      ownerId: channel.channelId?.ownerId,
     })) || [];
 
   useEffect(() => {
@@ -77,7 +77,7 @@ export default function Chat() {
       channelId: activeChannel?.channelId || "",
     },
     {
-      skip: !activeChannel?.channelId || activeChannel.channelId === "",
+      skip: !activeChannel?.channelId || activeChannel?.channelId === "",
       refetchOnMountOrArgChange: true,
     }
   );

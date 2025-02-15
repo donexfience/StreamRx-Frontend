@@ -25,12 +25,12 @@ export const httpPlaylistApi = createApi({
     }),
     getAllPlaylists: builder.query<
       AllPlaylistResponse,
-      { channelId: string; page: number; limit: number }
+      { page: number; limit: number; channelId: string; filters: any }
     >({
-      query: ({ channelId, page, limit }) => ({
+      query: ({ page, limit, channelId, filters }) => ({
         url: `/playlist/${channelId}/all`,
         method: "GET",
-        params: { page, limit },
+        params: { page, limit, ...filters },
       }),
     }),
     getPlaylistByQuery: builder.query<

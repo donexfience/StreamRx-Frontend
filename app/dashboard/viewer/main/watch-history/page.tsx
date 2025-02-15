@@ -186,15 +186,15 @@ const WatchHistory = () => {
             </h2>
             <div className="space-y-6">
               {videos.map((item: HistoryVideo) => (
-                <div key={item.videoId._id} className="flex gap-6 group">
+                <div key={item.videoId?._id} className="flex gap-6 group">
                   <Link
-                    href={`/watch/${item.videoId._id}`}
+                    href={`/watch/${item.videoId?._id}`}
                     className="flex-shrink-0"
                   >
                     <div className="relative w-64 h-36">
                       <Image
-                        src={item.videoId.thumbnailUrl}
-                        alt={item.videoId.title}
+                        src={item.videoId?.thumbnailUrl}
+                        alt={item.videoId?.title}
                         fill
                         className="object-cover rounded-lg"
                       />
@@ -203,7 +203,7 @@ const WatchHistory = () => {
                           className="h-full bg-red-600"
                           style={{
                             width: `${calculateProgress(
-                              item.watchDuration,
+                              item?.watchDuration,
                               item?.videoId?.metadata?.duration || 0
                             )}%`,
                           }}
@@ -212,34 +212,34 @@ const WatchHistory = () => {
                     </div>
                   </Link>
                   <div className="flex-1">
-                    <Link href={`/watch/${item.videoId._id}`}>
+                    <Link href={`/watch/${item.videoId?._id}`}>
                       <h3 className="font-semibold text-lg text-white hover:text-blue-400 transition-colors">
-                        {item.videoId.title}
+                        {item.videoId?.title}
                       </h3>
                     </Link>
-                    <Link href={`/channel/${item.videoId.channelId._id}`}>
+                    <Link href={`/channel/${item.videoId?.channelId?._id}`}>
                       <p className="text-gray-400 hover:text-gray-300 text-sm mt-2">
-                        {item.videoId.channelId.name}
+                        {item.videoId?.channelId?.name}
                       </p>
                     </Link>
                     <div className="flex items-center gap-2 text-sm text-gray-400 mt-2">
                       <span>
-                        {item.videoId.engagement.viewCount.toLocaleString()}{" "}
+                        {item.videoId?.engagement.viewCount.toLocaleString()}{" "}
                         views
                       </span>
                       <span>•</span>
                       <span>
                         {formatDistanceToNow(new Date(item.watchedAt))} ago
                       </span>
-                      {item.videoId.metadata?.duration && (
+                      {item.videoId?.metadata?.duration && (
                         <>
                           <span>•</span>
                           <span>
                             Watched{" "}
-                            {Math.round((item.watchDuration / 60) * 10) / 10}{" "}
+                            {Math.round((item?.watchDuration / 60) * 10) / 10}{" "}
                             min of{" "}
                             {Math.round(
-                              (item.videoId.metadata.duration / 60) * 10
+                              (item.videoId?.metadata.duration / 60) * 10
                             ) / 10}{" "}
                             min
                           </span>
@@ -250,7 +250,7 @@ const WatchHistory = () => {
                   <button
                     className="text-gray-500 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
                     onClick={() => {
-                      handleDelete(userId, item.videoId._id);
+                      handleDelete(userId, item.videoId?._id);
                     }}
                   >
                     <MdDelete className="text-xl" />

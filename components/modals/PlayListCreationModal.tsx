@@ -242,6 +242,7 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
           fps: metadata.fps,
           duration: metadata.duration,
         },
+        videoType: "normal",
         thumbnailUrl: formData.thumbnailUrl,
         tags: formData.tags,
         category: formData.category,
@@ -251,6 +252,7 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
       // Upload video data
       const response = await uploadVideo({
         ...videoData,
+        videoType: "normal",
         subtitles: formData.subtitles,
         endScreen: formData.endScreen,
       }).unwrap();

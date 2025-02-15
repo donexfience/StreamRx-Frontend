@@ -239,8 +239,8 @@ export interface AllVideoUploadResponse {
   pagination: {
     page: number;
     limit: number;
+    total: number;
   };
-  success: boolean;
 }
 
 export interface PlaylistRequest {
@@ -371,7 +371,10 @@ export interface AllPlaylistResponse {
     totalCount: number;
     page: number;
     perPage: number;
-    totalPages: number;
+    total: number;
+  };
+  pagination: {
+    total: number;
   };
 }
 

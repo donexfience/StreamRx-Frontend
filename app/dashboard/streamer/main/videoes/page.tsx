@@ -22,10 +22,43 @@ import EditVideoFlow from "@/components/modals/EditVideoUpload";
 import toast from "react-hot-toast";
 import { useRouter } from "next/navigation";
 import { deleteFromS3 } from "@/app/lib/action/s3";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
+import { DateRange } from "react-date-range";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import DateRangePicker from "@/components/filters/Date-range-picker";
 
 const VideoListingPage = () => {
   const router = useRouter();
   const [users, setUsers] = useState<any>(null);
+  const [filters, setFilters] = useState<any>({
+    status: "",
+    visibility: "",
+    category: "",
+    dateRange: { start: null, end: null },
+    searchQuery: "",
+  });
+  const [currentPage, setCurrentPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -37,29 +70,47 @@ const VideoListingPage = () => {
 
   const {
     data: channelData,
-
     isLoading,
     isError,
   } = useGetChannelByEmailQuery(users?.email, { skip: !users?.email });
 
-  console.log(channelData?._id, "channel data in the video listing stramer");
+  const flattenFilters = (filters: any) => {
+    const flattened = { ...filters };
+    if (filters.dateRange) {
+      flattened.startDate = filters.dateRange.start;
+      flattened.endDate = filters.dateRange.end;
+      delete flattened.dateRange;
+    }
+    return flattened;
+  };
+
+  const flattenedFilters = flattenFilters(filters);
+
+  console.log(flattenedFilters, "got it bro");
 
   const {
     data: videos,
     refetch,
     error: videoError,
-  } = useGetAllVideosQuery({
-    page: 1,
-    limit: 10,
-    channelId: channelData?._id || "",
-  });
-  console.log(videos?.data);
-  console.log(videoError, "video error");
-  const [deleteVideo] = useDeleteVideoMutation();
+  } = useGetAllVideosQuery(
+    {
+      page: currentPage,
+      limit: limit,
+      channelId: channelData?._id || "",
+      filters: flattenedFilters,
+    },
+    { refetchOnMountOrArgChange: true }
+  );
+  console.log(filters, "filters");
 
+  useEffect(() => {
+    console.log(videos, "coooooooooooooooo");
+  }, [videos]);
+  const [deleteVideo] = useDeleteVideoMutation();
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState<any>(null);
   const [showEditModal, setShowEditModal] = useState(false);
+
   const handleEditClick = (video: any) => {
     setSelectedVideo(video);
     setShowEditModal(true);
@@ -67,8 +118,6 @@ const VideoListingPage = () => {
 
   const handleDelete = async (video: any) => {
     try {
-      console.log("Deleting video:", video);
-
       if (!video.qualities || !Array.isArray(video.qualities)) {
         console.warn(`Skipping video ${video._id} due to missing qualities.`);
         return;
@@ -89,43 +138,27 @@ const VideoListingPage = () => {
 
   const handleVideoUpdate = async (updatedData: any) => {
     try {
-      console.log("Video updated with data:", updatedData);
       const response = await editVideo({
         videoId: updatedData._id,
         updateData: updatedData,
       }).unwrap();
-      toast.success("video updated succesfully");
-      console.log("Video updated successfully:", response);
+      toast.success("Video updated successfully");
       setShowEditModal(false);
     } catch (error) {
       console.error("error", error);
-      toast.error("failed to update video");
+      toast.error("Failed to update video");
     }
   };
 
-  const recommendedCategories = [
-    { icon: <Eye className="w-5 h-5 text-blue-500" />, text: "View Analytics" },
-    {
-      icon: <MessageSquare className="w-5 h-5 text-orange-500" />,
-      text: "Manage Comments",
-    },
-    { icon: <Plus className="w-5 h-5 text-green-500" />, text: "Upload Video" },
-    {
-      icon: <Clock className="w-5 h-5 text-purple-500" />,
-      text: "Schedule Upload",
-    },
-  ];
-
-  const handleUploadClick = () => {
-    setShowUploadModal(true);
+  const handleFilterChange = (key: string, value: any) => {
+    setFilters((prev: any) => ({ ...prev, [key]: value }));
   };
 
-  const handleVideoSubmit = (data: any) => {
-    console.log("Video upload complete with data:", data);
-    setShowUploadModal(false);
+  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFilters((prev: any) => ({ ...prev, searchQuery: e.target.value }));
+    refetch();
   };
 
-  // Helper function to format the time difference
   const getTimeDifference = (date: string) => {
     const now = new Date();
     const videoDate = new Date(date);
@@ -138,11 +171,30 @@ const VideoListingPage = () => {
     return `Published ${diffInDays} days ago`;
   };
 
-  // Helper function to determine priority based on video metrics
   const getPriority = (video: any) => {
     if (video.status === "processing") return "Medium";
     return "High";
   };
+
+  const handleDateRangeChange = (range: any) => {
+    setFilters((prev: any) => ({
+      ...prev,
+      dateRange: {
+        start: range.from,
+        end: range.to,
+      },
+    }));
+  };
+  const handleUploadClick = () => {
+    setShowUploadModal(true);
+  };
+
+  const handleVideoSubmit = (data: any) => {
+    console.log("Video upload complete with data:", data);
+    setShowUploadModal(false);
+  };
+
+  console.log(videos, "videoes got ");
 
   return (
     <div className="p-8 ml-32 w-full">
@@ -155,6 +207,8 @@ const VideoListingPage = () => {
               type="text"
               placeholder="Search or type a command"
               className="pl-10 pr-4 py-2 border rounded-lg w-64"
+              value={filters.searchQuery}
+              onChange={handleSearch}
             />
           </div>
           <button className="p-2 rounded-full hover:bg-gray-100">
@@ -163,38 +217,54 @@ const VideoListingPage = () => {
         </div>
       </div>
 
-      <div className="mb-8">
-        <h2 className="text-lg font-medium mb-4">Recommended Actions</h2>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {recommendedCategories.map((category, index) => (
-            <button
-              key={index}
-              className="flex items-center gap-3 p-4 rounded-xl border hover:bg-gray-50 transition-colors"
-            >
-              {category.icon}
-              <span className="font-medium">{category.text}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
       <div className="flex items-center justify-between mb-4">
         <div className="flex gap-4">
-          <button className="flex items-center gap-2 px-4 py-2 rounded-lg border">
+          <Button
+            className="flex items-center gap-2"
+            onClick={() => setFilters({ ...filters, status: "" })}
+          >
             <Filter className="w-4 h-4" />
             Filter
-          </button>
-          <button className="px-4 py-2 rounded-lg border">Sort</button>
-          <button className="px-4 py-2 rounded-lg border">Hide</button>
+          </Button>
+          <Select
+            onValueChange={(value) => handleFilterChange("status", value)}
+          >
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ready">Ready</SelectItem>
+              <SelectItem value="processing">Processing</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select
+            onValueChange={(value) => handleFilterChange("visibility", value)}
+          >
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Visibility" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="public">Public</SelectItem>
+              <SelectItem value="private">Private</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select
+            onValueChange={(value) => handleFilterChange("category", value)}
+          >
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Category" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Education">Education</SelectItem>
+              <SelectItem value="Entertainment">Entertainment</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <DateRangePicker onDateRangeChange={handleDateRangeChange} />
         </div>
-        <button
-          className="px-4 py-2 rounded-lg bg-black text-white"
-          onClick={handleUploadClick}
-        >
-          + New Video
-        </button>
+        <Button onClick={handleUploadClick}>+ New Video</Button>
       </div>
-      {/* //video looping */}
+
       <div className="space-y-4">
         {videos?.data && videos.data.length > 0 ? (
           videos.data.map((video: any, index: number) => (
@@ -292,6 +362,41 @@ const VideoListingPage = () => {
             </p>
           </div>
         )}
+      </div>
+
+      <div className="mt-8">
+        <Pagination>
+          <PaginationContent>
+            <PaginationItem>
+              <PaginationPrevious
+                onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                aria-disabled={currentPage === 1}
+              />
+            </PaginationItem>
+            {Array.from(
+              { length: Math.ceil((videos?.pagination?.total ?? 0) / limit) },
+              (_, index) => (
+                <PaginationItem key={index}>
+                  <PaginationLink
+                    onClick={() => setCurrentPage(index + 1)}
+                    isActive={currentPage === index + 1}
+                  >
+                    {index + 1}
+                  </PaginationLink>
+                </PaginationItem>
+              )
+            )}
+            <PaginationItem>
+              <PaginationNext
+                onClick={() => setCurrentPage((prev) => prev + 1)}
+                aria-disabled={
+                  currentPage ===
+                  Math.ceil(videos?.pagination?.total ?? 0 / limit)
+                }
+              />
+            </PaginationItem>
+          </PaginationContent>
+        </Pagination>
       </div>
 
       {showUploadModal && (

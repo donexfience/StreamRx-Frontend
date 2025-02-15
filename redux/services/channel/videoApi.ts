@@ -32,16 +32,19 @@ export const httpVideoApi = createApi({
         },
       }),
     }),
-
     getAllVideos: builder.query<
       AllVideoUploadResponse,
-      { page: number; limit: number; channelId: string }
+      { page: number; limit: number; channelId: string; filters: any }
     >({
-      query: ({ page, limit, channelId }) => ({
-        url: `/videoes/${channelId}/all`,
-        method: "GET",
-        params: { page, limit },
-      }),
+      query: ({ page, limit, channelId, filters }) => {
+        console.log("Filters received in query function:", filters);
+
+        return {
+          url: `/videoes/${channelId}/all`,
+          method: "GET",
+          params: { page, limit, ...filters },
+        };
+      },
     }),
     getVideoByQuery: builder.query<
       AllVideoUploadResponse,
@@ -369,6 +372,54 @@ export const httpVideoApi = createApi({
         };
       }) => response.data,
     }),
+    getMostPopular: builder.query<
+      AllVideoUploadResponse,
+      { page: number; limit: number }
+    >({
+      query: ({ page, limit }) => {
+        return {
+          url: `/videoes//videos/popular`,
+          method: "GET",
+          params: { page: page, limit: limit },
+        };
+      },
+    }),
+    getMostLiked: builder.query<
+      AllVideoUploadResponse,
+      { page: number; limit: number }
+    >({
+      query: ({ page, limit }) => {
+        return {
+          url: `/videoes/videos/mostliked`,
+          method: "GET",
+          params: { page: page, limit: limit },
+        };
+      },
+    }),
+    getMostViewed: builder.query<
+      AllVideoUploadResponse,
+      { page: number; limit: number }
+    >({
+      query: ({ page, limit }) => {
+        return {
+          url: `/videoes/videos/mostviewed`,
+          method: "GET",
+          params: { page: page, limit: limit },
+        };
+      },
+    }),
+    getMostRecent: builder.query<
+      AllVideoUploadResponse,
+      { page: number; limit: number }
+    >({
+      query: ({ page, limit }) => {
+        return {
+          url: `/videoes//videos/recent`,
+          method: "GET",
+          params: { page: page, limit: limit },
+        };
+      },
+    }),
   }),
 });
 
@@ -406,4 +457,8 @@ export const {
   useRemoveUserVideoFromPlaylistMutation,
   useRemoveFromHistoryMutation,
   useGetRelatedVideosQuery,
+  useGetMostLikedQuery,
+  useGetMostPopularQuery,
+  useGetMostRecentQuery,
+  useGetMostViewedQuery,
 } = httpVideoApi;
