@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import ViewerHead from "@/components/viewer-main/ViewerHead";
 import ViewerNavbar from "@/components/viewer-main/ViewerNavbar";
@@ -10,14 +10,11 @@ export default function ViewerLayout({
 }: {
   children: React.ReactNode;
 }) {
-
+  const [result, setResult] = useState<any>(null);
   return (
     <div className={`h-screen flex flex-col`}>
-      <ViewerHead  />
-      <div className="flex flex-1">
-        
-        {children}
-      </div>
+      <ViewerHead />
+      <div className="flex flex-1">{children}</div>
     </div>
   );
 }

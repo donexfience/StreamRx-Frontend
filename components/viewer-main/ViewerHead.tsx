@@ -12,23 +12,39 @@ import {
   useGetStreamerRequestByEmailQuery,
   useGetStreamerRequestByIdQuery,
 } from "@/redux/services/user/userApi";
+import { useRouter } from "next/navigation";
+import { useSearchVideosQuery } from "@/redux/services/channel/videoApi";
 
 const ViewerHead: React.FC<{}> = ({}) => {
-  const { user } = useSelector((state: RootState) => state.auth);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isModalOpen, setIsOpenModal] = useState(false);
   const toggleTheme = () => setIsDarkMode((prev) => !prev);
   const toggleModal = () => setIsOpenModal((prev) => !prev);
   const [users, setUsers] = useState<any>(null);
   const [isStreamRequestModal, setIsStreamRequestModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const router = useRouter();
+  const { data: video } = useSearchVideosQuery({
+    searchQuery: searchQuery,
+  });
+
+  console.log(video, "video got ");
+
   const toggleRequestModal = (request: any) => {
     if (request?.request?.status !== "rejected") {
       setIsStreamRequestModal((prev) => !prev);
     }
   };
 
+  const handleSearch = () => {
+    if (searchQuery.trim()) {
+      router.push(
+        `/dashboard/viewer/main/search?q=${encodeURIComponent(searchQuery)}`
+      );
+    }
+  };
+
   useEffect(() => {
-    // This check ensures that document is only used in the browser
     if (typeof document !== "undefined") {
       const style = document.createElement("style");
       style.textContent = `
@@ -119,10 +135,14 @@ const ViewerHead: React.FC<{}> = ({}) => {
             type="text"
             placeholder="Search for streamers, games"
             className="w-full px-4 py-2 bg-gray-800 rounded-lg text-gray-300 placeholder-gray-400 focus:outline-none focus:ring focus:ring-orange-500"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyPress={(e) => e.key === "Enter" && handleSearch()}
           />
           <Search
             className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400"
             size={20}
+            onClick={handleSearch}
           />
         </div>
       </div>

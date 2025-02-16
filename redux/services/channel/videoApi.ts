@@ -414,9 +414,62 @@ export const httpVideoApi = createApi({
     >({
       query: ({ page, limit }) => {
         return {
-          url: `/videoes//videos/recent`,
+          url: `/videoes/videos/recent`,
           method: "GET",
           params: { page: page, limit: limit },
+        };
+      },
+    }),
+    searchVideos: builder.query<
+      AllVideoUploadResponse,
+      {
+        searchQuery?: string;
+        status?: string;
+        visibility?: string;
+        category?: string;
+        videoType?: string;
+        tags?: string[];
+        dateRange?: { start: Date; end: Date };
+        page?: number;
+        limit?: number;
+      }
+    >({
+      query: ({
+        searchQuery,
+        status,
+        visibility,
+        category,
+        videoType,
+        tags,
+        dateRange,
+        page = 1,
+        limit = 10,
+      }) => {
+        const params: any = {
+          searchQuery,
+          status,
+          visibility,
+          category,
+          videoType,
+          page,
+          limit,
+        };
+
+        if (tags) {
+          params.tags = tags.join(",");
+        }
+
+        if (dateRange) {
+          params.dateRange = JSON.stringify({
+            start: dateRange.start.toISOString(),
+            end: dateRange.end.toISOString(),
+          });
+        }
+
+        return {
+          url: `/videoes/videos/search`,
+          method: "GET",
+          params,
         };
       },
     }),
@@ -438,6 +491,7 @@ export const {
   useUpdateVideoPlaylistMutation,
   useGetAllVideosQuery,
   useGetVideoByQueryQuery,
+  useSearchVideosQuery,
   useGetVideoByIdQuery,
   useGetVideoesBychannelIdQuery,
   useGetInteractionStatusQuery,
