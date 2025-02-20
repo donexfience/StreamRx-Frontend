@@ -74,6 +74,8 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import useVideoHistoryTracking from "@/components/video-helpers/useVideoHistroyTracking";
 import RelatedVideos from "@/components/dashboard/viewerComponent/RelatedVideoComponent";
+import useVideoInteractionTracking from "@/components/video-helpers/userInteractionTracking";
+import { Card } from "@/components/ui/card";
 
 interface Comment {
   _id: string;
@@ -454,7 +456,6 @@ SingleComment.displayName = "SingleComment";
 const CommentSection = React.memo(({ videoId }: { videoId: string }) => {
   const [sessionUser, setSessionUser] = useState<any>(null);
   const [isLoadingSession, setIsLoadingSession] = useState(true);
-
   const { data: comments = [], refetch: refetchComments } =
     useGetVideoCommentsQuery({ videoId }, { refetchOnMountOrArgChange: true });
   console.log(comments, "comments got");
@@ -480,15 +481,24 @@ const CommentSection = React.memo(({ videoId }: { videoId: string }) => {
     }
   );
 
-  userData?.user._id;
+  const params = useParams();
+  const userid = userData?.user._id || "";
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const id = params.id as string;
+  const { trackLike, trackDislike, trackComment } = useVideoInteractionTracking(
+    id,
+    userid,
+    videoRef
+  );
   const handleAddComment = async (text: string) => {
     try {
       if (userData?.user._id && videoId) {
-        await createComment({
+        const result = await createComment({
           videoId,
           text,
           userId: userData?.user?._id,
         }).unwrap();
+        await trackComment();
       }
       refetchComments();
     } catch (error) {}
@@ -984,6 +994,11 @@ const VideoPlayer = () => {
     }
   );
   const userId = userData?.user?._id || "";
+  const { trackLike, trackDislike, trackComment } = useVideoInteractionTracking(
+    id,
+    userId,
+    videoRef
+  );
   useVideoHistoryTracking(id, userId, videoRef);
   const [toggleLike] = useToggleLikeMutation();
   const [toggleDislike] = useToggleDisLikeMutation();
@@ -1008,7 +1023,7 @@ const VideoPlayer = () => {
 
   const handleLike = async () => {
     try {
-      if (userId && !interactionStatus?.liked) {
+      if (userId) {
         await toggleLike({
           videoId: id,
           userId: userId,
@@ -1016,18 +1031,28 @@ const VideoPlayer = () => {
 
         refetchInteraction();
         GetVideoRefetch();
+        trackLike();
       }
-    } catch (error) {}
+    } catch (error) {
+      console.error("Error toggling like:", error);
+    }
   };
 
   const handleDislike = async () => {
     try {
-      if (userId && !interactionStatus?.liked) {
-        await toggleDislike({ videoId: id, userId: userId }).unwrap();
+      if (userId) {
+        await toggleDislike({
+          videoId: id,
+          userId: userId,
+        }).unwrap();
+
         refetchInteraction();
         GetVideoRefetch();
+        trackDislike();
       }
-    } catch (error) {}
+    } catch (error) {
+      console.error("Error toggling dislike:", error);
+    }
   };
   const channelId = videoData?.channelId?._id || "";
   const {
@@ -1048,22 +1073,30 @@ const VideoPlayer = () => {
   const [unsubscribe, { isLoading: unsubscribeLoading }] =
     useUnsubscribeFromChannelMutation();
   const isLoadings = statusLoading || subscribeLoading || unsubscribeLoading;
+  const [isLoadingss, setIsLoadingss] = useState(false);
+  const [isSubscribed, setIsSubscribed] = useState(
+    subscriptionStatus?.isSubscribed
+  );
 
   const handleSubscriptionToggle = async () => {
+    setIsLoadingss(true);
     try {
       if (subscriptionStatus?.isSubscribed) {
         await unsubscribe({ userId, channelId }).unwrap();
+        setIsSubscribed(false);
       } else {
         await subscribe({ userId, channelId }).unwrap();
+        setIsSubscribed(true);
       }
-
-      // Force refetch both subscription status and video data
       await Promise.all([subscriptionStatusfetch(), GetVideoRefetch()]);
-      console.log(subscriptionStatus.isSubscribed, "status of susbription");
     } catch (error) {
       console.error("Failed to toggle subscription:", error);
+      setIsSubscribed(!isSubscribed);
+    } finally {
+      setIsLoadingss(false);
     }
   };
+
   const togglePlay = useCallback(() => {
     if (!videoRef.current) return;
     if (isPlaying) {
@@ -1191,7 +1224,34 @@ const VideoPlayer = () => {
     };
   }, []);
 
+  const SubscriptionOverlay = () => (
+    <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50">
+      <Card
+        className="max-w-2xl px-8 h-[50%] flex flex-col  justify-center items-center
+       bg-gray-900 text-center"
+      >
+        <h3 className="text-xl font-semibold text-white mb-4">
+          Subscribe to Continue Watching
+        </h3>
+        <p className="text-gray-300 mb-6">
+          This content is exclusive to subscribers. Please subscribe to{" "}
+          {channelName} to unlock full access to this video.
+        </p>
+        <button className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition-colors">
+          Subscribe Now
+        </button>
+      </Card>
+    </div>
+  );
+  let canAccess = false;
+  canAccess =
+    videoData?.visibility === "public" ||
+    (videoData?.visibility === "private" && subscriptionStatus?.isSubscribed);
   const VideoControls = useMemo(() => {
+    if (!canAccess) {
+      return null;
+    }
+
     return (
       <div
         className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent px-4 pb-2 transition-opacity duration-300 ${
@@ -1415,6 +1475,7 @@ const VideoPlayer = () => {
                 <div className="w-12 h-12 border-4 border-gray-300 border-t-blue-500 rounded-full animate-spin" />
               </div>
             )}
+            {!canAccess && <SubscriptionOverlay />}
             {VideoControls}
             {!isVideoLoading && (
               <div
@@ -1446,7 +1507,14 @@ const VideoPlayer = () => {
                   className="w-12 h-12 rounded-full"
                 />
                 <div>
-                  <h3 className="text-white font-medium">
+                  <h3
+                    className="text-white font-medium"
+                    onClick={() => {
+                      router.push(
+                        `/dashboard/viewer/main/channel/${channelId}`
+                      );
+                    }}
+                  >
                     {channelName || "Channel Name"}
                   </h3>
                   <p className="text-gray-400 text-sm">
@@ -1459,10 +1527,10 @@ const VideoPlayer = () => {
                   variant={
                     subscriptionStatus?.isSubscribed ? "secondary" : "default"
                   }
-                  className={`rounded-full font-medium ${
+                  className={`rounded-full font-medium transition-all duration-200 ${
                     subscriptionStatus?.isSubscribed
-                      ? "bg-gray-800 text-white"
-                      : "bg-white text-black"
+                      ? "bg-gray-800 text-white hover:bg-gray-700"
+                      : "bg-white text-black hover:bg-gray-100"
                   }`}
                 >
                   {isLoading
@@ -1471,7 +1539,6 @@ const VideoPlayer = () => {
                     ? "Subscribed"
                     : "Subscribe"}
                 </Button>
-
                 {subscriptionStatus?.isSubscribed && (
                   <Button
                     onClick={() =>
@@ -1489,14 +1556,17 @@ const VideoPlayer = () => {
                 <div className="flex bg-gray-800 rounded-full">
                   <button
                     className={`flex items-center gap-1 px-4 py-2 hover:bg-gray-700 rounded-l-full ${
-                      interactionStatus?.liked ? "text-blue-500" : "text-white"
+                      interactionStatus?.data?.liked
+                        ? "text-blue-500"
+                        : "text-white"
                     }`}
                     onClick={handleLike}
-                    disabled={interactionStatus?.liked}
                   >
                     <ThumbsUp
                       size={20}
-                      fill={interactionStatus?.liked ? "currentColor" : "none"}
+                      fill={
+                        interactionStatus?.data?.liked ? "currentColor" : "none"
+                      }
                     />
                     <span className="text-white">
                       {videoData?.engagement?.likeCount || "0"}
@@ -1504,7 +1574,7 @@ const VideoPlayer = () => {
                   </button>
                   <button
                     className={`flex items-center gap-1 px-4 py-2 hover:bg-gray-700 rounded-r-full border-l border-gray-700 ${
-                      interactionStatus?.disliked
+                      interactionStatus?.data?.disliked
                         ? "text-blue-500"
                         : "text-white"
                     }`}
@@ -1513,7 +1583,9 @@ const VideoPlayer = () => {
                     <ThumbsDown
                       size={20}
                       fill={
-                        interactionStatus?.disliked ? "currentColor" : "none"
+                        interactionStatus?.data?.disliked
+                          ? "currentColor"
+                          : "none"
                       }
                     />
                     <span className="text-white">

@@ -206,6 +206,8 @@ const StreamInterface: React.FC = () => {
 
   const [editChannel] = useEditChannelByIdMutation();
 
+  const filters = {};
+
   const {
     data: playlists,
     error: playlistError,
@@ -215,6 +217,7 @@ const StreamInterface: React.FC = () => {
       channelId: channelData?._id ?? "",
       page,
       limit,
+      filters,
     },
     {
       skip: !channelData?._id,
@@ -224,7 +227,11 @@ const StreamInterface: React.FC = () => {
   const { data: videos, isLoading: isVideoLoading } =
     useGetVideoesBychannelIdQuery({
       id: channelData?._id ?? "",
+      page,
+      limit,
     });
+
+  console.log(videos, "videoes got ");
 
   const tabs = [
     { id: "home", label: "Home" },
@@ -360,10 +367,10 @@ const StreamInterface: React.FC = () => {
         {activeTab === "home" && (
           <>
             {/* Stream Videos */}
-            {videos?.length > 0 ? (
+            {videos?.videos.length > 0 ? (
               <CarouselSection
                 title="Stream Videos"
-                items={videos}
+                items={videos?.videos}
                 renderItem={(video: any) => (
                   <div className="flex-shrink-0 w-64 bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-200 overflow-hidden">
                     <div className="aspect-video bg-gray-100 relative">
@@ -407,7 +414,7 @@ const StreamInterface: React.FC = () => {
             )}
 
             {/* Playlists Preview */}
-            {playlists?.data?.length > 0 ? (
+            {Array.isArray(playlists?.data) && playlists.data.length > 0 ? (
               <CarouselSection
                 title="Popular Playlists"
                 items={playlists?.data}
@@ -481,10 +488,10 @@ const StreamInterface: React.FC = () => {
 
         {activeTab === "videos" && (
           <div>
-            {videos && videos?.length > 0 ? (
+            {videos && videos?.videos?.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {Array.isArray(videos) &&
-                  videos.map((video: any) => (
+                {Array.isArray(videos?.videos) &&
+                  videos.videos.map((video: any) => (
                     <VideoCard key={video.id} video={video} />
                   ))}
               </div>
@@ -499,31 +506,8 @@ const StreamInterface: React.FC = () => {
                 </p>
               </div>
             )}
-          </div>
-        )}
 
-        {activeTab === "playlists" && (
-          <div>
-            {playlists?.data?.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {playlists.data.map((playlist: any) => (
-                  <PlaylistCard key={playlist.id} playlist={playlist} />
-                ))}
-              </div>
-            ) : (
-              <div className="bg-white rounded-lg p-8 text-center shadow-sm">
-                <Camera className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-gray-900 font-medium mb-2">
-                  No Playlists Available
-                </h3>
-                <p className="text-gray-500">
-                  Create playlists to organize your content
-                </p>
-              </div>
-            )}
-
-            {/* Pagination for Playlists */}
-            {playlists?.data?.length > 0 && (
+            {Array.isArray(videos?.videos) && videos.videos?.length > 0 && (
               <div className="mt-6 flex justify-center">
                 <div className="flex items-center gap-2">
                   <button
@@ -542,9 +526,64 @@ const StreamInterface: React.FC = () => {
                   </span>
                   <button
                     onClick={() => setPage((prev) => prev + 1)}
-                    disabled={!playlists?.hasMore}
+                    disabled={!videos.total}
                     className={`px-4 py-2 rounded-lg transition-colors duration-200 ${
-                      !playlists?.hasMore
+                      !videos.total
+                        ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                        : "bg-white text-gray-700 hover:bg-gray-50 shadow-sm"
+                    }`}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === "playlists" && (
+          <div>
+            {Array.isArray(playlists?.data) && playlists.data.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {playlists.data.map((playlist: any) => (
+                  <PlaylistCard key={playlist.id} playlist={playlist} />
+                ))}
+              </div>
+            ) : (
+              <div className="bg-white rounded-lg p-8 text-center shadow-sm">
+                <Camera className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-gray-900 font-medium mb-2">
+                  No Playlists Available
+                </h3>
+                <p className="text-gray-500">
+                  Create playlists to organize your content
+                </p>
+              </div>
+            )}
+
+            {/* Pagination for Playlists */}
+            {Array.isArray(playlists?.data) && playlists.data.length > 0 && (
+              <div className="mt-6 flex justify-center">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                    disabled={page === 1}
+                    className={`px-4 py-2 rounded-lg transition-colors duration-200 ${
+                      page === 1
+                        ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                        : "bg-white text-gray-700 hover:bg-gray-50 shadow-sm"
+                    }`}
+                  >
+                    Previous
+                  </button>
+                  <span className="px-4 py-2 bg-blue-50 text-blue-600 rounded-lg font-medium">
+                    {page}
+                  </span>
+                  <button
+                    onClick={() => setPage((prev) => prev + 1)}
+                    disabled={!playlists.data.total}
+                    className={`px-4 py-2 rounded-lg transition-colors duration-200 ${
+                      !playlists.data.total
                         ? "bg-gray-100 text-gray-400 cursor-not-allowed"
                         : "bg-white text-gray-700 hover:bg-gray-50 shadow-sm"
                     }`}

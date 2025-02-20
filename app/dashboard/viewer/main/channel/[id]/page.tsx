@@ -17,10 +17,14 @@ import {
   useGetChannelByIdQuery,
 } from "@/redux/services/channel/channelApi";
 import { useGetAllPlaylistsQuery } from "@/redux/services/channel/plalylistApi";
-import { useGetVideoesBychannelIdQuery } from "@/redux/services/channel/videoApi";
+import {
+  useGetVideoesBychannelIdQuery,
+  useGetVideoesBychannelIdViewerQuery,
+} from "@/redux/services/channel/videoApi";
 import { useParams } from "next/navigation";
+import { useGetUserQuery } from "@/redux/services/user/userApi";
 
-// Interfaces remain the same
+// Interfaces
 interface Video {
   id: string;
   title: string;
@@ -48,6 +52,31 @@ interface Channel {
     twitch?: boolean;
     youtube?: boolean;
   };
+}
+
+interface ChannelApiResponse {
+  data: Channel | null;
+  error: string | null;
+  isLoading: boolean;
+}
+
+interface PlaylistsApiResponse {
+  data: {
+    playlists: Playlist[];
+    totalCount: number;
+    page: number;
+    perPage: number;
+    total: number;
+  } | null;
+  hasMore: boolean;
+  error: string | null;
+  isLoading: boolean;
+}
+
+interface VideosApiResponse {
+  data: Video[] | null;
+  error: string | null;
+  isLoading: boolean;
 }
 
 interface CarouselProps<T> {
@@ -84,9 +113,10 @@ const VideoCard: React.FC<VideoCardProps> = ({ video }) => (
     </div>
   </div>
 );
+
 const PlaylistCard: React.FC<PlaylistCardProps> = ({ playlist }) => (
   <div className="bg-gray-900 shadow-lg hover:shadow-xl transition-shadow duration-200 overflow-hidden border border-gray-800 m-3">
-    <div className="aspect-video bg-gray-800 relative ">
+    <div className="aspect-video bg-gray-800 relative">
       <img
         src={playlist.thumbnailUrl || "/api/placeholder/320/180"}
         alt={playlist.title}
@@ -172,7 +202,9 @@ const EmptyState: React.FC<{
 );
 
 const StreamInterface: React.FC = () => {
-  const [activeTab, setActiveTab] = useState("home");
+  const [activeTab, setActiveTab] = useState<
+    "home" | "about" | "videos" | "playlists"
+  >("home");
   const [page, setPage] = useState(1);
   const [videoIndex, setVideoIndex] = useState(0);
   const [playlistIndex, setPlaylistIndex] = useState(0);
@@ -180,15 +212,37 @@ const StreamInterface: React.FC = () => {
 
   const params = useParams();
   const channelId = params.id as string;
+  const [sessionUser, setSessionUser] = useState<any>(null);
+  const [isLoadingSession, setIsLoadingSession] = useState(true);
+
+  useEffect(() => {
+    const fetchSessionUser = async () => {
+      try {
+        const user = await getUserFromCookies();
+        setSessionUser(user?.user);
+      } catch (error) {
+      } finally {
+        setIsLoadingSession(false);
+      }
+    };
+    fetchSessionUser();
+  }, []);
+
+  const { data: userData } = useGetUserQuery(
+    { email: sessionUser?.email },
+    {
+      skip: isLoadingSession || !sessionUser?.email,
+    }
+  );
 
   const {
     data: channelData,
     error: channelError,
     isLoading: channelLoading,
-  } = useGetChannelByChannelIdQuery(channelId);
+  } = useGetChannelByChannelIdQuery(channelId) as ChannelApiResponse;
 
   const {
-    data: playlists,
+    data: playlistsResponse,
     error: playlistError,
     isLoading: playlistLoading,
   } = useGetAllPlaylistsQuery(
@@ -196,24 +250,34 @@ const StreamInterface: React.FC = () => {
       channelId: channelData?._id ?? "",
       page,
       limit,
+      filters: {},
     },
     {
       skip: !channelData?._id,
     }
   );
 
+  console.log(channelData, "channel data got");
+  const userId: any = userData?.user?._id;
+
   const {
     data: videos,
     error: videoError,
     isLoading: videoLoading,
-  } = useGetVideoesBychannelIdQuery(
+  } = useGetVideoesBychannelIdViewerQuery(
     {
       id: channelData?._id ?? "",
+      page,
+      limit,
+      channelId: channelData?._id || "",
+      userId: userId,
     },
     {
       skip: !channelData?._id,
     }
   );
+
+  const playlists = playlistsResponse?.data?.playlists || [];
 
   const tabs = [
     { id: "home", label: "Home" },
@@ -221,6 +285,8 @@ const StreamInterface: React.FC = () => {
     { id: "videos", label: "Videos" },
     { id: "playlists", label: "Playlists" },
   ];
+
+  console.log(videos?.videos, playlists, "video and playlists got");
 
   if (channelLoading) {
     return (
@@ -243,11 +309,11 @@ const StreamInterface: React.FC = () => {
       case "home":
         return (
           <>
-            {videos?.length > 0 ? (
+            {Array.isArray(videos?.videos) && videos?.videos.length > 0 ? (
               <CarouselSection
                 title="Stream Videos"
-                items={videos}
-                renderItem={(video) => <VideoCard video={video} />}
+                items={videos?.videos}
+                renderItem={(video: Video) => <VideoCard video={video} />}
                 currentIndex={videoIndex}
                 setIndex={setVideoIndex}
               />
@@ -259,11 +325,13 @@ const StreamInterface: React.FC = () => {
               />
             )}
 
-            {playlists?.data?.length > 0 ? (
+            {playlists.length > 0 ? (
               <CarouselSection
                 title="Popular Playlists"
-                items={playlists.data}
-                renderItem={(playlist) => <PlaylistCard playlist={playlist} />}
+                items={playlists}
+                renderItem={(playlist: any) => (
+                  <PlaylistCard playlist={playlist} />
+                )}
                 currentIndex={playlistIndex}
                 setIndex={setPlaylistIndex}
               />
@@ -301,11 +369,42 @@ const StreamInterface: React.FC = () => {
         );
 
       case "videos":
-        return videos?.length > 0 ? (
+        return Array.isArray(videos?.videos) && videos?.videos.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-0">
-            {videos.map((video: any) => (
+            {videos?.videos.map((video: Video) => (
               <VideoCard key={video.id} video={video} />
             ))}
+            {Array.isArray(videos?.videos) && videos?.videos.length > 0 && (
+              <div className="mt-6 flex justify-center">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                    disabled={page === 1}
+                    className={`px-4 py-2 rounded-lg transition-colors duration-200 ${
+                      page === 1
+                        ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                        : "bg-white text-gray-700 hover:bg-gray-50 shadow-sm"
+                    }`}
+                  >
+                    Previous
+                  </button>
+                  <span className="px-4 py-2 bg-blue-50 text-blue-600 rounded-lg font-medium">
+                    {page}
+                  </span>
+                  <button
+                    onClick={() => setPage((prev) => prev + 1)}
+                    disabled={!videos?.total}
+                    className={`px-4 py-2 rounded-lg transition-colors duration-200 ${
+                      !videos.total
+                        ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                        : "bg-white text-gray-700 hover:bg-gray-50 shadow-sm"
+                    }`}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <EmptyState
@@ -314,14 +413,13 @@ const StreamInterface: React.FC = () => {
             description="Start streaming to create content"
           />
         );
-
       case "playlists":
         return (
           <div>
-            {playlists?.data?.length > 0 ? (
+            {playlists.length > 0 ? (
               <>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-0">
-                  {playlists.data.map((playlist) => (
+                  {playlists.map((playlist: any) => (
                     <PlaylistCard key={playlist.id} playlist={playlist} />
                   ))}
                 </div>
@@ -343,9 +441,9 @@ const StreamInterface: React.FC = () => {
                     </span>
                     <button
                       onClick={() => setPage((prev) => prev + 1)}
-                      disabled={!playlists?.hasMore}
+                      disabled={!playlistsResponse}
                       className={`px-4 py-2 rounded-lg transition-colors duration-200 ${
-                        !playlists?.hasMore
+                        !playlistsResponse
                           ? "bg-gray-800 text-gray-500 cursor-not-allowed"
                           : "bg-gray-800 text-gray-300 hover:bg-gray-700"
                       }`}
@@ -376,7 +474,7 @@ const StreamInterface: React.FC = () => {
       <div className="relative h-48 md:h-64 overflow-hidden">
         {channelData?.channelBannerImageUrl ? (
           <img
-            src={channelData.channelBannerImageUrl}
+            src={channelData?.channelBannerImageUrl}
             alt="Channel Banner"
             className="w-full h-full object-cover"
           />
@@ -402,9 +500,8 @@ const StreamInterface: React.FC = () => {
             <div className="w-16 h-16 rounded-full overflow-hidden shadow-lg">
               {channelData?.channelProfileImageUrl ? (
                 <img
-                  src={channelData.channelProfileImageUrl}
+                  src={channelData?.channelProfileImageUrl}
                   alt="Channel Profile"
-                  /* Continuing from the Channel Info section */
                   className="w-full h-full object-cover"
                 />
               ) : (
@@ -434,7 +531,6 @@ const StreamInterface: React.FC = () => {
         </div>
       </div>
 
-      {/* Tab Navigation */}
       <div className="border-b border-gray-800">
         <div className="flex gap-6 px-4">
           {tabs.map((tab) => (
@@ -445,7 +541,7 @@ const StreamInterface: React.FC = () => {
                   ? "text-blue-400"
                   : "text-gray-400 hover:text-gray-200"
               }`}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => setActiveTab(tab.id as typeof activeTab)}
             >
               {tab.label}
               {activeTab === tab.id && (

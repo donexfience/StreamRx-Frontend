@@ -132,10 +132,29 @@ const PopularShorts = () => {
     );
   }
 
-  if (isShortsError) {
+  if (
+    !shortsRecommendations?.data ||
+    shortsRecommendations?.data.length === 0
+  ) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="text-red-500">Error loading content</div>
+      <div className="bg-black dark:bg-white transition-all duration-500 ease-in-out px-4">
+        <div className="mb-8">
+          <div className="flex items-center mt-3">
+            <span className="text-orange-500 text-2xl">★</span>
+            <h2 className="text-white dark:text-black text-xl font-bold ml-2">
+              SHORTS VIDEOS
+            </h2>
+          </div>
+          <div className="flex flex-col items-center justify-center py-16 px-4">
+            <div className="text-gray-400 dark:text-gray-600 text-lg mb-4">
+              No videos found
+            </div>
+            <p className="text-gray-500 dark:text-gray-400 text-sm text-center max-w-md">
+              There are currently no recent videos to display. Videos will
+              appear here once they are uploaded.
+            </p>
+          </div>
+        </div>
       </div>
     );
   }

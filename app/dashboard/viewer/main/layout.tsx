@@ -1,9 +1,9 @@
 "use client";
 
-import ViewerHead from "@/components/viewer-main/ViewerHead";
 import ViewerNavbar from "@/components/viewer-main/ViewerNavbar";
 import { useEffect, useState } from "react";
 import "../../../../styles/dark.css";
+import ViewerHead from "@/components/viewer-main/ViewerHead";
 
 export default function ViewerLayout({
   children,

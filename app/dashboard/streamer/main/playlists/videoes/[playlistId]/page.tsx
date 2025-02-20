@@ -756,7 +756,7 @@ const VideoPlayer = () => {
 
   const handleLike = async () => {
     try {
-      if (userId && !interactionStatus?.liked) {
+      if (userId) {
         await toggleLike({
           videoId: currentVideoId || "",
           userId: userId,
@@ -770,7 +770,7 @@ const VideoPlayer = () => {
 
   const handleDislike = async () => {
     try {
-      if (userId && !interactionStatus?.liked) {
+      if (userId) {
         await toggleDislike({
           videoId: currentVideoId || "",
           userId: userId,
@@ -1101,7 +1101,7 @@ const VideoPlayer = () => {
     togglePlay,
     toggleFullscreen,
   ]);
-  const channelName = videoData?.channelId?.channelName;
+  const channelName: any = videoData?.channelId?.channelName;
   const subscribers = videoData?.channelId?.subscribersCount;
   console.log(subscribers, "subscribers");
 
@@ -1239,14 +1239,17 @@ const VideoPlayer = () => {
                 <div className="flex bg-gray-800 rounded-full">
                   <button
                     className={`flex items-center gap-1 px-4 py-2 hover:bg-gray-700 rounded-l-full ${
-                      interactionStatus?.liked ? "text-blue-500" : "text-white"
+                      interactionStatus?.data?.liked
+                        ? "text-blue-500"
+                        : "text-white"
                     }`}
                     onClick={handleLike}
-                    disabled={interactionStatus?.liked}
                   >
                     <ThumbsUp
                       size={20}
-                      fill={interactionStatus?.liked ? "currentColor" : "none"}
+                      fill={
+                        interactionStatus?.data?.liked ? "currentColor" : "none"
+                      }
                     />
                     <span className="text-white">
                       {videoData?.engagement?.likeCount || "0"}
@@ -1254,7 +1257,7 @@ const VideoPlayer = () => {
                   </button>
                   <button
                     className={`flex items-center gap-1 px-4 py-2 hover:bg-gray-700 rounded-r-full border-l border-gray-700 ${
-                      interactionStatus?.disliked
+                      interactionStatus?.data?.disliked
                         ? "text-blue-500"
                         : "text-white"
                     }`}
@@ -1263,7 +1266,9 @@ const VideoPlayer = () => {
                     <ThumbsDown
                       size={20}
                       fill={
-                        interactionStatus?.disliked ? "currentColor" : "none"
+                        interactionStatus?.data?.disliked
+                          ? "currentColor"
+                          : "none"
                       }
                     />
                     <span className="text-white">

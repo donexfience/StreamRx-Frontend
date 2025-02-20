@@ -1,12 +1,14 @@
 import { MainContent } from "@/components/viewer-main/MainContent";
 import Popular from "@/components/viewer-main/Popular";
 import PopularShorts from "@/components/viewer-main/Popular-shorts";
-import PopularVideo from "@/components/viewer-main/Popular-video";
+import PopularVideo from "@/components/viewer-main/MostPopular-video";
 import Recent from "@/components/viewer-main/Recent-video";
 import ViewerHead from "@/components/viewer-main/ViewerHead";
 import ViewerNavbar from "@/components/viewer-main/ViewerNavbar";
 import { ThemeProvider } from "next-themes";
 import React from "react";
+import MostLiked from "@/components/viewer-main/MostLiked-video";
+import MostViewed from "@/components/viewer-main/MostViewed-video";
 
 const page: React.FC = () => {
   return (
@@ -20,6 +22,8 @@ const page: React.FC = () => {
         <PopularShorts />
         <Recent />
         <PopularVideo />
+        <MostLiked />
+        <MostViewed />
       </div>
     </div>
   );

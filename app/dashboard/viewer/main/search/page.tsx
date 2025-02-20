@@ -1,6 +1,6 @@
 "use client";
 import React from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useSearchVideosQuery } from "@/redux/services/channel/videoApi";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -200,8 +200,9 @@ const FilterButton: React.FC<{
 };
 
 const SearchResults = () => {
-  const params = useParams();
-  const { q } = params;
+  const searchParams = useSearchParams();
+  const q = searchParams.get("q");
+  console.log(q, "paramssssssssssss");
   const [dateRange, setDateRange] = React.useState<DateRange>({
     from: undefined,
     to: undefined,

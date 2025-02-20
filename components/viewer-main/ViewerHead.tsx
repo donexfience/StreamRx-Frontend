@@ -24,11 +24,6 @@ const ViewerHead: React.FC<{}> = ({}) => {
   const [isStreamRequestModal, setIsStreamRequestModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const router = useRouter();
-  const { data: video } = useSearchVideosQuery({
-    searchQuery: searchQuery,
-  });
-
-  console.log(video, "video got ");
 
   const toggleRequestModal = (request: any) => {
     if (request?.request?.status !== "rejected") {
@@ -38,9 +33,7 @@ const ViewerHead: React.FC<{}> = ({}) => {
 
   const handleSearch = () => {
     if (searchQuery.trim()) {
-      router.push(
-        `/dashboard/viewer/main/search?q=${encodeURIComponent(searchQuery)}`
-      );
+      router.push(`/dashboard/viewer/main/search?q=${searchQuery}`);
     }
   };
 

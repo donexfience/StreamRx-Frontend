@@ -6,8 +6,13 @@ import { useGetVideoRecommendationQuery } from "@/redux/services/recommendation/
 import { getUserFromCookies } from "@/app/lib/action/auth";
 import { useRouter } from "next/navigation";
 import { getPresignedUrl } from "@/app/lib/action/s3";
+import {
+  useGetMostPopularQuery,
+  useGetMostRecentQuery,
+} from "@/redux/services/channel/videoApi";
+import { useGetUserQuery } from "@/redux/services/user/userApi";
 
-const Popular = () => {
+const PopularVideo = () => {
   const router = useRouter();
   const [users, setUsers] = useState<any>(null);
   const videoRowRef = useRef<HTMLDivElement>(null);
@@ -16,18 +21,28 @@ const Popular = () => {
   const [hoveredVideoId, setHoveredVideoId] = useState<string | null>(null);
   const [hoveredVideoUrl, setHoveredVideoUrl] = useState<string | null>(null);
   const [isLoadingVideo, setIsLoadingVideo] = useState(false);
+  const [sessionUser, setSessionUser] = useState<any>(null);
+  const [isLoadingSession, setIsLoadingSession] = useState(true);
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchSessionUser = async () => {
       try {
-        const decodeUser = await getUserFromCookies();
-        setUsers(decodeUser.user);
+        const user = await getUserFromCookies();
+        setSessionUser(user?.user);
       } catch (error) {
-        console.error("Error fetching user data:", error);
+      } finally {
+        setIsLoadingSession(false);
       }
     };
-    fetchData();
+    fetchSessionUser();
   }, []);
+
+  const { data: userData } = useGetUserQuery(
+    { email: sessionUser?.email },
+    {
+      skip: isLoadingSession || !sessionUser?.email,
+    }
+  );
 
   const scrollVideos = (direction: "left" | "right") => {
     if (videoRowRef.current) {
@@ -60,12 +75,15 @@ const Popular = () => {
   }, []);
 
   const {
-    data: recommendations,
+    data: recentVideos,
     isLoading,
     isError,
-  } = useGetVideoRecommendationQuery(users?.email, {
-    skip: !users?.email,
-  });
+  } = useGetMostPopularQuery(
+    { page: 1, limit: 10, userId: userData?.user._id || "" },
+    {
+      skip: !userData?.user?._id,
+    }
+  );
 
   const handleVideoHover = async (videoId: string, s3Key: string) => {
     setIsLoadingVideo(true);
@@ -131,22 +149,14 @@ const Popular = () => {
     },
   ];
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="text-white">Loading...</div>
-      </div>
-    );
-  }
-
-  if (!recommendations?.data || recommendations?.data?.length === 0) {
+  if (!recentVideos?.data || recentVideos.data.length === 0) {
     return (
       <div className="bg-black dark:bg-white transition-all duration-500 ease-in-out px-4">
         <div className="mb-8">
           <div className="flex items-center mt-3">
             <span className="text-orange-500 text-2xl">★</span>
             <h2 className="text-white dark:text-black text-xl font-bold ml-2">
-              RECOMMENDED VIDEOS
+              RECENT VIDEOS
             </h2>
           </div>
           <div className="flex flex-col items-center justify-center py-16 px-4">
@@ -162,7 +172,6 @@ const Popular = () => {
       </div>
     );
   }
-
   return (
     <div className="bg-black dark:bg-white transition-all duration-500 ease-in-out px-4 max-w-full overflow-hidden">
       {/* Recommended Videos Section */}
@@ -171,7 +180,7 @@ const Popular = () => {
           <div className="flex items-center mt-3">
             <span className="text-orange-500 text-2xl">★</span>
             <h2 className="text-white dark:text-black text-xl font-bold ml-2">
-              RECOMMENDED VIDEOS
+              MOST POPULAR VIDEOS
             </h2>
           </div>
           <button
@@ -205,7 +214,7 @@ const Popular = () => {
             ref={videoRowRef}
             className="flex gap-4 overflow-x-hidden scroll-smooth p-6 w-full"
           >
-            {recommendations?.data?.map((video: any) => (
+            {recentVideos?.data?.map((video: any) => (
               <div
                 key={video._id}
                 className="flex-none w-64 min-w-[256px] bg-gray-900 dark:bg-gray-100 rounded-lg overflow-hidden group hover:transform hover:scale-105 transition-all duration-200 cursor-pointer relative"
@@ -288,10 +297,8 @@ const Popular = () => {
           </div>
         </div>
       </div>
-
-      {/* Live Streams Section */}
     </div>
   );
 };
 
-export default Popular;
+export default PopularVideo;

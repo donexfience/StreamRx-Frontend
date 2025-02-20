@@ -169,6 +169,48 @@ export interface VideoData {
   subscribers: number;
   length?: any;
   commentsCount: any;
+  total?: any;
+}
+
+export interface VideoDataStreamerByChannelId {
+  videos: {
+    _id: string;
+    channelId: any;
+    category: string;
+    createdAt: string;
+    updatedAt: string;
+    description: string;
+    metadata: VideoMetadata;
+    processingProgress: number;
+    defaultQuality: string;
+    qualities: any;
+    selectedPlaylist: string[];
+    status: string;
+    tags: string[];
+    thumbnailUrl: string;
+    title: string;
+    visibility: string;
+    __v: number;
+    engagement: VideoEngagement;
+    channelName: string;
+    subscribers: number;
+    length?: any;
+    commentsCount: any;
+  };
+  total?: any;
+}
+
+interface InteractionStatus {
+  liked: boolean;
+  disliked: boolean;
+  likeCount: number;
+  dislikeCount: number;
+}
+
+export interface LikeDislikeResponse {
+  success: boolean;
+  message: string;
+  data: InteractionStatus;
 }
 
 export interface Comment {

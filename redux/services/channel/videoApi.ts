@@ -6,14 +6,14 @@ import {
   CommentResponse,
   CreateCommentRequest,
   CreatePlaylistUserRequest,
+  LikeDislikeResponse,
   UpdateCommentRequest,
   UserPlaylist,
   VideoData,
+  VideoDataStreamerByChannelId,
   VideoUploadRequest,
   VideoUploadResponse,
 } from "./channel";
-import build from "next/dist/build";
-import { url } from "inspector";
 
 export const httpVideoApi = createApi({
   reducerPath: "httpVideoApi",
@@ -73,14 +73,39 @@ export const httpVideoApi = createApi({
       },
     }),
 
-    getVideoesBychannelId: builder.query<VideoData, { id: any }>({
-      query: ({ id }) => {
+    getVideoesBychannelId: builder.query<
+      VideoDataStreamerByChannelId,
+      { id: any; page: number; limit: number }
+    >({
+      query: ({ id, page, limit }) => {
         console.log("Query parameter in RTK Query:", id);
         return {
           url: `/videoes/channel/${id}`,
           method: "GET",
+          params: { page: page, limit: limit },
         };
       },
+    }),
+
+    getVideoesBychannelIdViewer: builder.query<
+      VideoDataStreamerByChannelId,
+      {
+        id: any;
+        page: number;
+        limit: number;
+        userId: string;
+        channelId: string;
+      }
+    >({
+      query: ({ page, limit, userId, channelId }) => ({
+        url: `/videoes/channel/viewer/${channelId}`,
+        method: "GET",
+        params: {
+          page,
+          limit,
+          userId,
+        },
+      }),
     }),
 
     updateVideoPlaylist: builder.mutation({
@@ -191,10 +216,7 @@ export const httpVideoApi = createApi({
         method: "DELETE",
       }),
     }),
-    toggleLike: builder.mutation<
-      { liked: boolean },
-      { videoId: string; userId: string }
-    >({
+    toggleLike: builder.mutation<any, { videoId: string; userId: string }>({
       query: ({ videoId, userId }) => ({
         url: `/videoes/${videoId}/like`,
         method: "POST",
@@ -204,10 +226,7 @@ export const httpVideoApi = createApi({
       }),
     }),
 
-    toggleDisLike: builder.mutation<
-      { disliked: boolean },
-      { videoId: string; userId: string }
-    >({
+    toggleDisLike: builder.mutation<any, { videoId: string; userId: string }>({
       query: ({ videoId, userId }) => ({
         url: `/videoes/${videoId}/dislike`,
         method: "POST",
@@ -218,17 +237,27 @@ export const httpVideoApi = createApi({
     }),
 
     getInteractionStatus: builder.query<
-      { liked: boolean; disliked: boolean },
+      any,
       { videoId: string; userId: string }
     >({
-      query: ({ videoId, userId }) => ({
-        url: `videoes/${videoId}/interaction-status`,
-        body: {
-          userId,
-        },
-        method: "GET",
-      }),
+      query: ({ videoId, userId }) => {
+        console.log(
+          "Fetching interaction status for video:",
+          videoId,
+          "and user:",
+          userId
+        );
+
+        return {
+          url: `videoes/${videoId}/interaction-status`,
+          body: {
+            userId,
+          },
+          method: "POST",
+        };
+      },
     }),
+
     editVideo: builder.mutation<
       VideoData,
       { videoId: string; updateData: Partial<VideoData> }
@@ -374,49 +403,49 @@ export const httpVideoApi = createApi({
     }),
     getMostPopular: builder.query<
       AllVideoUploadResponse,
-      { page: number; limit: number }
+      { page: number; limit: number; userId: string }
     >({
-      query: ({ page, limit }) => {
+      query: ({ page, limit, userId }) => {
         return {
-          url: `/videoes//videos/popular`,
+          url: `/videoes/videos/popular`,
           method: "GET",
-          params: { page: page, limit: limit },
+          params: { page: page, limit: limit, userId: userId },
         };
       },
     }),
     getMostLiked: builder.query<
       AllVideoUploadResponse,
-      { page: number; limit: number }
+      { page: number; limit: number; userId: string }
     >({
-      query: ({ page, limit }) => {
+      query: ({ page, limit, userId }) => {
         return {
           url: `/videoes/videos/mostliked`,
           method: "GET",
-          params: { page: page, limit: limit },
+          params: { page: page, limit: limit, userId: userId },
         };
       },
     }),
     getMostViewed: builder.query<
       AllVideoUploadResponse,
-      { page: number; limit: number }
+      { page: number; limit: number; userId: string }
     >({
-      query: ({ page, limit }) => {
+      query: ({ page, limit, userId }) => {
         return {
           url: `/videoes/videos/mostviewed`,
           method: "GET",
-          params: { page: page, limit: limit },
+          params: { page: page, limit: limit, userId: userId },
         };
       },
     }),
     getMostRecent: builder.query<
       AllVideoUploadResponse,
-      { page: number; limit: number }
+      { page: number; limit: number; userId: string }
     >({
-      query: ({ page, limit }) => {
+      query: ({ page, limit, userId }) => {
         return {
           url: `/videoes/videos/recent`,
           method: "GET",
-          params: { page: page, limit: limit },
+          params: { page: page, limit: limit, userId: userId },
         };
       },
     }),
@@ -515,4 +544,5 @@ export const {
   useGetMostPopularQuery,
   useGetMostRecentQuery,
   useGetMostViewedQuery,
+  useGetVideoesBychannelIdViewerQuery,
 } = httpVideoApi;

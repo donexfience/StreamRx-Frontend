@@ -7,28 +7,38 @@ import { getUserFromCookies } from "@/app/lib/action/auth";
 import { useRouter } from "next/navigation";
 import { getPresignedUrl } from "@/app/lib/action/s3";
 import { useGetMostRecentQuery } from "@/redux/services/channel/videoApi";
+import { useGetUserQuery } from "@/redux/services/user/userApi";
 
 const Recent = () => {
   const router = useRouter();
-  const [users, setUsers] = useState<any>(null);
   const videoRowRef = useRef<HTMLDivElement>(null);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const [showRightArrow, setShowRightArrow] = useState(true);
   const [hoveredVideoId, setHoveredVideoId] = useState<string | null>(null);
   const [hoveredVideoUrl, setHoveredVideoUrl] = useState<string | null>(null);
   const [isLoadingVideo, setIsLoadingVideo] = useState(false);
+  const [sessionUser, setSessionUser] = useState<any>(null);
+  const [isLoadingSession, setIsLoadingSession] = useState(true);
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchSessionUser = async () => {
       try {
-        const decodeUser = await getUserFromCookies();
-        setUsers(decodeUser.user);
+        const user = await getUserFromCookies();
+        setSessionUser(user?.user);
       } catch (error) {
-        console.error("Error fetching user data:", error);
+      } finally {
+        setIsLoadingSession(false);
       }
     };
-    fetchData();
+    fetchSessionUser();
   }, []);
+
+  const { data: userData } = useGetUserQuery(
+    { email: sessionUser?.email },
+    {
+      skip: isLoadingSession || !sessionUser?.email,
+    }
+  );
 
   const scrollVideos = (direction: "left" | "right") => {
     if (videoRowRef.current) {
@@ -60,14 +70,16 @@ const Recent = () => {
     }
   }, []);
 
+  console.log(userData?.user, "use");
+
   const {
     data: recentVideos,
     isLoading,
     isError,
   } = useGetMostRecentQuery(
-    { page: 1, limit: 10 },
+    { page: 1, limit: 10, userId: userData?.user?._id || "" },
     {
-      skip: !users?.email,
+      skip: !userData?.user?._id,
     }
   );
 
@@ -143,10 +155,26 @@ const Recent = () => {
     );
   }
 
-  if (isError) {
+  if (!recentVideos?.data || recentVideos.data.length === 0) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="text-red-500">Error loading recommendations</div>
+      <div className="bg-black dark:bg-white transition-all duration-500 ease-in-out px-4">
+        <div className="mb-8">
+          <div className="flex items-center mt-3">
+            <span className="text-orange-500 text-2xl">★</span>
+            <h2 className="text-white dark:text-black text-xl font-bold ml-2">
+              RECENT VIDEOS
+            </h2>
+          </div>
+          <div className="flex flex-col items-center justify-center py-16 px-4">
+            <div className="text-gray-400 dark:text-gray-600 text-lg mb-4">
+              No videos found
+            </div>
+            <p className="text-gray-500 dark:text-gray-400 text-sm text-center max-w-md">
+              There are currently no recent videos to display. Videos will
+              appear here once they are uploaded.
+            </p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -278,25 +306,6 @@ const Recent = () => {
       </div>
 
       {/* Live Streams Section */}
-      <div className="max-w-[calc(100vw-240px)]">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-white dark:text-black text-xl font-bold">
-            TRENDING FREE FIRE LIVE STREAMS
-          </h2>
-          <button
-            className="text-gray-400 hover:text-white dark:hover:text-black flex items-center gap-1"
-            onClick={() => router.push("/dashboard/viewer/streams")}
-          >
-            SEE MORE
-            <ArrowRight size={16} />
-          </button>
-        </div>
-        <div className="flex gap-4 overflow-x-auto pb-4 w-full">
-          {streams.map((stream, index) => (
-            <StreamerCard key={index} {...stream} />
-          ))}
-        </div>
-      </div>
     </div>
   );
 };
