@@ -405,6 +405,7 @@ const VideoListingPage = () => {
           onClose={() => setShowUploadModal(false)}
           onSuccess={handleVideoSubmit}
           channelId={channelData?._id}
+          channelAccessibility={channelData?.channelAccessibility}
         />
       )}
       {showEditModal && (
@@ -414,6 +415,8 @@ const VideoListingPage = () => {
           onClose={() => setShowEditModal(false)}
           onSuccess={handleVideoUpdate}
           channelId={channelData?._id}
+          channelAccessibility={channelData?.channelAccessibility}
+
         />
       )}
     </div>

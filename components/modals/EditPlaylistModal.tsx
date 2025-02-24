@@ -26,6 +26,7 @@ interface Video {
 }
 
 interface EditPlaylistModalProps {
+  channelAcessibility: any;
   isOpen: boolean;
   onClose: () => void;
   refetch: any;
@@ -84,6 +85,7 @@ const uploadThumbnail = async (file: File): Promise<string> => {
 };
 
 const EditPlaylistModal: React.FC<EditPlaylistModalProps> = ({
+  channelAcessibility,
   isOpen,
   onClose,
   refetch,
@@ -309,6 +311,7 @@ const EditPlaylistModal: React.FC<EditPlaylistModalProps> = ({
           fps: metadata.fps,
           duration: metadata.duration,
         },
+        videoType: "normal" as "normal" | "short",
         thumbnailUrl: formData.thumbnailUrl,
         tags: formData.tags,
         category: formData.category,
@@ -817,9 +820,24 @@ const EditPlaylistModal: React.FC<EditPlaylistModalProps> = ({
                     onChange={handleInputChange}
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   >
-                    <option value="public">Public</option>
+                    <option
+                      value="public"
+                      disabled={
+                        channelAcessibility === "private" ||
+                        channelAcessibility === "unlisted"
+                      }
+                    >
+                      Public{" "}
+                      {channelAcessibility !== "public" && "(Not allowed)"}
+                    </option>
                     <option value="private">Private</option>
-                    <option value="unlisted">Unlisted</option>
+                    <option
+                      value="unlisted"
+                      disabled={channelAcessibility === "private"}
+                    >
+                      Unlisted{" "}
+                      {channelAcessibility === "private" && "(Not allowed)"}
+                    </option>
                   </select>
                 </div>
               </div>

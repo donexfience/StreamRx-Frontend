@@ -58,6 +58,7 @@ interface EditVideoFlowProps {
   channelId: string | undefined;
   maxFileSize?: number;
   refetch: any;
+  channelAccessibility: any;
 }
 
 const EditVideoFlow: React.FC<EditVideoFlowProps> = ({
@@ -66,6 +67,7 @@ const EditVideoFlow: React.FC<EditVideoFlowProps> = ({
   onClose,
   onSuccess,
   channelId,
+  channelAccessibility = "public",
 }) => {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [isVideoLoading, setIsVideoLoading] = useState(false);
@@ -106,6 +108,17 @@ const EditVideoFlow: React.FC<EditVideoFlowProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showQualityMenu, setShowQualityMenu] = useState(false);
   const [currentQuality, setCurrentQuality] = useState("1080p");
+
+  React.useEffect(() => {
+    if (channelAccessibility === "private") {
+      setFormData((prev) => ({ ...prev, visibility: "private" }));
+    } else if (channelAccessibility === "unlisted") {
+      setFormData((prev) => ({
+        ...prev,
+        visibility: prev.visibility === "public" ? "unlisted" : prev.visibility,
+      }));
+    }
+  }, [channelAccessibility]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -589,8 +602,19 @@ const EditVideoFlow: React.FC<EditVideoFlowProps> = ({
                       </label>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="unlisted" id="unlisted" />
-                      <label htmlFor="unlisted" className="flex flex-col">
+                      <RadioGroupItem
+                        value="unlisted"
+                        id="unlisted"
+                        disabled={channelAccessibility === "private"}
+                      />
+                      <label
+                        htmlFor="unlisted"
+                        className={`flex flex-col ${
+                          channelAccessibility === "private"
+                            ? "text-gray-400 cursor-not-allowed"
+                            : ""
+                        }`}
+                      >
                         <div className="font-medium">Unlisted</div>
                         <div className="text-sm text-gray-500">
                           Anyone with the link can watch
@@ -598,8 +622,23 @@ const EditVideoFlow: React.FC<EditVideoFlowProps> = ({
                       </label>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="public" id="public" />
-                      <label htmlFor="public" className="flex flex-col">
+                      <RadioGroupItem
+                        value="public"
+                        id="public"
+                        disabled={
+                          channelAccessibility === "private" ||
+                          channelAccessibility === "unlisted"
+                        }
+                      />
+                      <label
+                        htmlFor="public"
+                        className={`flex flex-col ${
+                          channelAccessibility === "private" ||
+                          channelAccessibility === "unlisted"
+                            ? "text-gray-400 cursor-not-allowed"
+                            : ""
+                        }`}
+                      >
                         <div className="font-medium">Public</div>
                         <div className="text-sm text-gray-500">
                           Everyone can watch

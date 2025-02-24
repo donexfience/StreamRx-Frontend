@@ -260,12 +260,14 @@ const PlaylistPage: React.FC = () => {
         {OpenModal && (
           <PlaylistCreationModal
             onClose={handleClickOpenModal}
+            channelAcessibility={channelData?.channelAccessibility}
             isOpen={OpenModal}
             refetch={refetch}
           />
         )}
         {editModalOpen && selectedPlaylist && (
           <EditPlaylistModal
+            channelAcessibility={channelData?.channelAccessibility}
             refetch={refetch}
             isOpen={editModalOpen}
             onClose={() => {

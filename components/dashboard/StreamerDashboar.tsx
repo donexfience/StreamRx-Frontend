@@ -48,14 +48,15 @@ const StreamerDashboard = () => {
       const channelLastData = { email: users.email, ...channelData };
       console.log("Channel data:", channelLastData);
       const response = await channelCreation(channelLastData).unwrap();
+      console.log(response, "response");
       if (response.success) {
         toast.success("channel created successfully");
         router.replace("/dashboard/streamer/main");
       }
       console.log("Channel created successfully:", response);
       setIsOpenModal(false);
-    } catch (error) {
-      console.error("Error creating channel:", error);
+    } catch (error: any) {
+      toast.error(error?.data?.error);
     }
   };
 

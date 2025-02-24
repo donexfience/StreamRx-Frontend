@@ -482,7 +482,7 @@ const CommentSection = React.memo(({ videoId }: { videoId: string }) => {
   );
 
   const params = useParams();
-  const userid = userData?.user._id || "";
+  const userid = userData?.user?._id || "";
   const videoRef = useRef<HTMLVideoElement>(null);
   const id = params.id as string;
   const { trackLike, trackDislike, trackComment } = useVideoInteractionTracking(

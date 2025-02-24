@@ -35,6 +35,7 @@ interface PlaylistCreationModalProps {
   isOpen: boolean;
   onClose: () => void;
   refetch: any;
+  channelAcessibility: any;
 }
 
 interface ValidationErrors {
@@ -76,6 +77,7 @@ const uploadThumbnail = async (file: File): Promise<string> => {
 };
 
 const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
+  channelAcessibility = "public",
   isOpen = true,
   onClose,
   refetch,
@@ -817,9 +819,24 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
                     onChange={handleInputChange}
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   >
-                    <option value="public">Public</option>
+                    <option
+                      value="public"
+                      disabled={
+                        channelAcessibility === "private" ||
+                        channelAcessibility === "unlisted"
+                      }
+                    >
+                      Public{" "}
+                      {channelAcessibility !== "public" && "(Not allowed)"}
+                    </option>
                     <option value="private">Private</option>
-                    <option value="unlisted">Unlisted</option>
+                    <option
+                      value="unlisted"
+                      disabled={channelAcessibility === "private"}
+                    >
+                      Unlisted{" "}
+                      {channelAcessibility === "private" && "(Not allowed)"}
+                    </option>
                   </select>
                 </div>
                 {/* thumbainail section */}

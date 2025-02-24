@@ -79,7 +79,7 @@ const PopularVideo = () => {
     isLoading,
     isError,
   } = useGetMostPopularQuery(
-    { page: 1, limit: 10, userId: userData?.user._id || "" },
+    { page: 1, limit: 10, userId: userData?.user?._id || "" },
     {
       skip: !userData?.user?._id,
     }

@@ -13,6 +13,13 @@ export function useVideoInteractionTracking(
   userId: string,
   videoRef: React.RefObject<HTMLVideoElement>
 ) {
+  console.log(
+    videoRef,
+    videoId,
+    userId,
+    "calling th ehook for the interaction "
+  );
+
   const [trackInteraction] = useTrackInteractionMutation();
   const watchedSegments = useRef<WatchedSegment[]>([]);
   const lastUpdateTime = useRef<number>(0);
@@ -20,6 +27,8 @@ export function useVideoInteractionTracking(
   const currentSegment = useRef<WatchedSegment | null>(null);
   const hasSentView = useRef<boolean>(false);
   const lastInteractionType = useRef<InteractionType | null>(null);
+
+  console.log(lastInteractionType, "last interaction type");
 
   const getCompletionPercentage = (): number => {
     const totalWatchedTime = watchedSegments.current.reduce(
@@ -32,6 +41,7 @@ export function useVideoInteractionTracking(
       : 0;
 
     // Cap at 100% to match backend validation
+    console.log(percentage, "percentage---------------------");
     return Math.min(percentage, 100);
   };
 
@@ -49,6 +59,7 @@ export function useVideoInteractionTracking(
         // Less than 9 seconds
         return;
       }
+      console.log("sending interaction function called");
     }
 
     const completion = getCompletionPercentage();
@@ -69,6 +80,7 @@ export function useVideoInteractionTracking(
     };
 
     try {
+      console.log("interaction sending");
       await trackInteraction({
         userId,
         videoId,

@@ -83,6 +83,7 @@ interface VideoUploadProps {
   onSuccess: (videoData: any) => void;
   maxFileSize?: number; // in bytes
   refetch: any;
+  channelAccessibility: any;
 }
 
 const CircularProgress = ({ progress = 70 }: { progress: number }) => {
@@ -129,6 +130,7 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
   onSuccess,
   refetch,
   maxFileSize = 400 * 1024 * 1024,
+  channelAccessibility = "public",
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [currentModal, setCurrentModal] = useState<"upload" | "details">(
@@ -163,6 +165,17 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
     category: "",
     videoType: "normal",
   });
+
+  React.useEffect(() => {
+    if (channelAccessibility === "private") {
+      setFormData((prev) => ({ ...prev, visibility: "private" }));
+    } else if (channelAccessibility === "unlisted") {
+      setFormData((prev) => ({
+        ...prev,
+        visibility: prev.visibility === "public" ? "unlisted" : prev.visibility,
+      }));
+    }
+  }, [channelAccessibility]);
 
   const { data: playlist, isLoading } = useGetPlaylistByQueryQuery(
     {
@@ -782,8 +795,19 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
                         </label>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="unlisted" id="unlisted" />
-                        <label htmlFor="unlisted" className="flex flex-col">
+                        <RadioGroupItem
+                          value="unlisted"
+                          id="unlisted"
+                          disabled={channelAccessibility === "private"}
+                        />
+                        <label
+                          htmlFor="unlisted"
+                          className={`flex flex-col ${
+                            channelAccessibility === "private"
+                              ? "text-gray-400 cursor-not-allowed"
+                              : ""
+                          }`}
+                        >
                           <div className="font-medium">Unlisted</div>
                           <div className="text-sm text-gray-500">
                             Anyone with the link can watch
@@ -791,8 +815,23 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
                         </label>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="public" id="public" />
-                        <label htmlFor="public" className="flex flex-col">
+                        <RadioGroupItem
+                          value="public"
+                          id="public"
+                          disabled={
+                            channelAccessibility === "private" ||
+                            channelAccessibility === "unlisted"
+                          }
+                        />
+                        <label
+                          htmlFor="public"
+                          className={`flex flex-col ${
+                            channelAccessibility === "private" ||
+                            channelAccessibility === "unlisted"
+                              ? "text-gray-400 cursor-not-allowed"
+                              : ""
+                          }`}
+                        >
                           <div className="font-medium">Public</div>
                           <div className="text-sm text-gray-500">
                             Everyone can watch
