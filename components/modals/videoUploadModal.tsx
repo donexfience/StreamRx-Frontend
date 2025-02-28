@@ -898,7 +898,12 @@ const VideoUploadFlow: React.FC<VideoUploadProps> = ({
               <div className="bg-gray-50 rounded-lg p-4">
                 <div className="aspect-video bg-gray-200 rounded mb-4">
                   {selectedFile && (
-                    <video className="w-full h-full object-cover rounded">
+                    <video
+                      className="w-full h-full object-cover rounded
+                    
+                    "
+                    autoPlay
+                    >
                       <source
                         src={URL.createObjectURL(selectedFile)}
                         type={selectedFile.type}

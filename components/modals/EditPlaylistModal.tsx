@@ -107,6 +107,16 @@ const EditPlaylistModal: React.FC<EditPlaylistModalProps> = ({
     subtitles: false,
     endScreen: false,
   });
+  React.useEffect(() => {
+    if (channelAcessibility === "private") {
+      setFormData((prev) => ({ ...prev, visibility: "private" }));
+    } else if (channelAcessibility === "unlisted") {
+      setFormData((prev) => ({
+        ...prev,
+        visibility: prev.visibility === "public" ? "unlisted" : prev.visibility,
+      }));
+    }
+  }, [channelAcessibility]);
   const [selectedVideos, setSelectedVideos] = useState<Video[]>([]);
 
   const [previewThumbnail, setPreviewThumbnail] = useState<string | null>(

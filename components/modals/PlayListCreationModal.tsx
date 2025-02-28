@@ -98,6 +98,17 @@ const PlaylistCreationModal: React.FC<PlaylistCreationModalProps> = ({
     endScreen: false,
   });
 
+  React.useEffect(() => {
+    if (channelAcessibility === "private") {
+      setFormData((prev) => ({ ...prev, visibility: "private" }));
+    } else if (channelAcessibility === "unlisted") {
+      setFormData((prev) => ({
+        ...prev,
+        visibility: prev.visibility === "public" ? "unlisted" : prev.visibility,
+      }));
+    }
+  }, [channelAcessibility]);
+
   useEffect(() => {
     const fetchData = async () => {
       const decodeUser = await getUserFromCookies();
