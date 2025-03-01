@@ -404,40 +404,44 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     if (!device || !socket.current) return;
 
     if (!isScreenSharing) {
-      try {
-        const screenStream = await navigator.mediaDevices.getDisplayMedia({
-          video: true,
-        });
-        if (screenVideoRef.current) {
-          screenVideoRef.current.srcObject = screenStream;
-          try {
-            await screenVideoRef.current.play();
-          } catch (err) {
-            console.error("Error playing screen share video:", err);
+      setIsScreenSharing(true);
+      setTimeout(async () => {
+        try {
+          const screenStream = await navigator.mediaDevices.getDisplayMedia({
+            video: true,
+          });
+          console.log("Screen stream captured:", screenStream);
+          if (screenVideoRef.current) {
+            console.log("Screen video ref exists:", screenVideoRef.current);
+            screenVideoRef.current.srcObject = screenStream;
+            console.log(screenVideoRef.current.srcObject, "src object");
+            try {
+              await screenVideoRef.current.play();
+            } catch (err) {
+              console.error("Error playing screen share video:", err);
+            }
+            screenStream.oninactive = () => {
+              setIsScreenSharing(false);
+              screenProducer?.close();
+              setScreenProducer(null);
+              screenVideoRef.current!.srcObject = null;
+            };
+          } else {
+            console.error("screenVideoRef.current is null!");
           }
-          screenStream.oninactive = () => {
-            setIsScreenSharing(false);
-            screenProducer?.close();
-            setScreenProducer(null);
-            screenVideoRef.current!.srcObject = null;
-          };
+
+          const transport: any =
+            producerTransport || (await createProducerTransport());
+          const screenTrack = screenStream.getVideoTracks()[0];
+          const producer = await transport.produce({ track: screenTrack });
+
+          setScreenProducer(producer);
+          if (!producerTransport) setProducerTransport(transport);
+        } catch (err) {
+          console.error("Error sharing screen:", err);
+          setIsScreenSharing(false);
         }
-
-        const transport: any =
-          producerTransport || (await createProducerTransport());
-        const screenTrack = screenStream.getVideoTracks()[0];
-        const producer = await transport.produce({ track: screenTrack });
-
-        setScreenProducer(producer);
-        setIsScreenSharing(true);
-        if (!producerTransport) setProducerTransport(transport);
-
-        if (isCameraOn && !videoProducer) {
-          await startWebcamStream();
-        }
-      } catch (err) {
-        console.error("Error sharing screen:", err);
-      }
+      }, 100);
     } else {
       if (screenProducer) {
         screenProducer.close();
@@ -583,6 +587,12 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     return "U";
   };
 
+  console.log(
+    screenVideoRef,
+    "screen ref ,",
+    isScreenSharing,
+    "isssssssssssssss"
+  );
   return (
     <motion.div
       className="flex flex-col h-screen bg-[#0a152c]"
