@@ -42,6 +42,7 @@ interface StreamPreviewModalProps {
   stream: any;
   refetchStreams: any;
   onGoLive: any;
+  onCloseCreateStream: any;
   isLoading: boolean;
 }
 
@@ -52,6 +53,7 @@ export const StreamPreviewModal: React.FC<StreamPreviewModalProps> = ({
   stream,
   onGoLive,
   isLoading,
+  onCloseCreateStream,
 }) => {
   const [selectedVideoDeviceId, setSelectedVideoDeviceId] = useState<
     string | undefined
@@ -144,6 +146,7 @@ export const StreamPreviewModal: React.FC<StreamPreviewModalProps> = ({
     }
     onClose();
     onGoLive();
+    onCloseCreateStream();
   };
 
   if (isLoading) {
