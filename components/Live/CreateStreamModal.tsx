@@ -48,16 +48,20 @@ import {
 import { uploadToS3 } from "@/app/lib/action/s3";
 import { uploadToCloudinary } from "@/app/lib/action/user";
 import { useCreateStreamMutation } from "@/redux/services/streaming/streamingApi";
-import { StreamPreviewModal } from "./StreamPreviewModal";
+import { useGetUserQuery } from "@/redux/services/user/userApi";
 
 interface CreateStreamModalProps {
   onClose: () => void;
   setShowStreamPreview: any;
+  existingStreams: any[];
+  refetchStreams: any;
 }
 
 const CreateStreamModal: React.FC<CreateStreamModalProps> = ({
   onClose,
   setShowStreamPreview,
+  existingStreams,
+  refetchStreams,
 }) => {
   const [currentStep, setCurrentStep] = useState(0);
   const steps = ["Details", "Customization", "Visibility"];
@@ -78,9 +82,7 @@ const CreateStreamModal: React.FC<CreateStreamModalProps> = ({
       | File
       | { [key: string]: { url: string; s3Key: string } }
       | null,
-    schedule: {
-      dateTime: getInitialScheduleTime(),
-    },
+    schedule: { dateTime: getInitialScheduleTime() },
     playlistId: "",
     liveChat: {
       enabled: true,
@@ -92,6 +94,7 @@ const CreateStreamModal: React.FC<CreateStreamModalProps> = ({
     },
     isScheduled: false,
     status: "pending" as "pending" | "scheduled" | "started" | "stopped",
+    createdBy: "",
   });
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery] = useDebounce(searchQuery, 500);
@@ -106,8 +109,14 @@ const CreateStreamModal: React.FC<CreateStreamModalProps> = ({
     fetchData();
   }, []);
 
-  const { data: channelData, isLoading: channelLoading } =
-    useGetChannelByEmailQuery(users?.email, { skip: !users?.email });
+  const { data: userData } = useGetUserQuery(
+    { email: users?.email },
+    { skip: !users?.email, refetchOnMountOrArgChange: true }
+  );
+
+  const { data: channelData } = useGetChannelByEmailQuery(users?.email, {
+    skip: !users?.email,
+  });
 
   const { data: playlistData, isLoading: playlistLoading } =
     useGetPlaylistByQueryQuery(
@@ -131,22 +140,21 @@ const CreateStreamModal: React.FC<CreateStreamModalProps> = ({
   const [openCalendar, setOpenCalendar] = useState(false);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (formData.isScheduled) {
+    if (formData.isScheduled) {
+      const interval = setInterval(() => {
         const now = new Date();
         const minTime = addMinutes(now, 5);
         if (isBefore(formData.schedule.dateTime, minTime)) {
           setErrors((prev) => ({
             ...prev,
-            schedule:
-              "Scheduled time must be at least 5 minutes from now. Please select a new time.",
+            schedule: "Scheduled time must be at least 5 minutes from now.",
           }));
         } else {
           setErrors((prev) => ({ ...prev, schedule: "" }));
         }
-      }
-    }, 1000);
-    return () => clearInterval(interval);
+      }, 1000);
+      return () => clearInterval(interval);
+    }
   }, [formData.isScheduled, formData.schedule.dateTime]);
 
   const handleChange = (field: string, value: any) => {
@@ -162,10 +170,7 @@ const CreateStreamModal: React.FC<CreateStreamModalProps> = ({
   const handleChatSettingsChange = (field: string, value: any) => {
     setFormData((prev) => ({
       ...prev,
-      liveChat: {
-        ...prev.liveChat,
-        [field]: value,
-      },
+      liveChat: { ...prev.liveChat, [field]: value },
     }));
   };
 
@@ -179,14 +184,27 @@ const CreateStreamModal: React.FC<CreateStreamModalProps> = ({
           schedule: "Scheduled time must be at least 5 minutes from now.",
         }));
       } else {
-        setFormData((prev) => ({
-          ...prev,
-          schedule: {
-            ...prev.schedule,
-            dateTime: date,
-          },
-        }));
-        setErrors((prev) => ({ ...prev, schedule: "" }));
+        // Check for 5-minute gap with existing scheduled streams
+        const scheduledTimes = existingStreams
+          .filter((s) => s.status === "scheduled")
+          .map((s) => new Date(s.schedule.dateTime).getTime());
+        const newTime = date.getTime();
+        const minGap = 5 * 60 * 1000; // 5 minutes in milliseconds
+        const hasOverlap = scheduledTimes.some(
+          (time) => Math.abs(time - newTime) < minGap
+        );
+        if (hasOverlap) {
+          setErrors((prev) => ({
+            ...prev,
+            schedule: "Streams must be at least 5 minutes apart.",
+          }));
+        } else {
+          setFormData((prev) => ({
+            ...prev,
+            schedule: { ...prev.schedule, dateTime: date },
+          }));
+          setErrors((prev) => ({ ...prev, schedule: "" }));
+        }
       }
     }
   };
@@ -196,10 +214,7 @@ const CreateStreamModal: React.FC<CreateStreamModalProps> = ({
     if (file) {
       const objectUrl = URL.createObjectURL(file);
       setImagePreview(objectUrl);
-      setFormData((prev) => ({
-        ...prev,
-        thumbnail: file,
-      }));
+      setFormData((prev) => ({ ...prev, thumbnail: file }));
       setErrors((prev) => ({ ...prev, thumbnail: "" }));
     }
   };
@@ -209,10 +224,7 @@ const CreateStreamModal: React.FC<CreateStreamModalProps> = ({
     if (file) {
       const objectUrl = URL.createObjectURL(file);
       setVideoPreview(objectUrl);
-      setFormData((prev) => ({
-        ...prev,
-        fallbackVideo: file,
-      }));
+      setFormData((prev) => ({ ...prev, fallbackVideo: file }));
       setErrors((prev) => ({ ...prev, fallbackVideo: "" }));
     }
   };
@@ -223,68 +235,48 @@ const CreateStreamModal: React.FC<CreateStreamModalProps> = ({
       [key: string]: { url: string; s3Key: string };
     } = {};
 
-    try {
-      if (formData.thumbnail && typeof formData.thumbnail !== "string") {
-        const file = formData.thumbnail as File;
-        const validTypes = ["image/jpeg", "image/png", "image/gif"];
-        if (!validTypes.includes(file.type)) {
-          throw new Error("Please upload a valid image (JPEG, PNG, or GIF)");
-        }
-        if (file.size > 5 * 1024 * 1024) {
-          throw new Error("Thumbnail size must be less than 5MB");
-        }
-        uploadedThumbnailUrl = await uploadToCloudinary(file);
-        setThumbnailUrl(uploadedThumbnailUrl);
-      } else if (typeof formData.thumbnail === "string") {
-        uploadedThumbnailUrl = formData.thumbnail;
-      }
-
-      if (formData.fallbackVideo && formData.fallbackVideo instanceof File) {
-        const file = formData.fallbackVideo as File;
-        const validTypes = ["video/mp4", "video/webm", "video/ogg"];
-        if (!validTypes.includes(file.type)) {
-          throw new Error("Please upload a valid video (MP4, WebM, or OGG)");
-        }
-        if (file.size > 100 * 1024 * 1024) {
-          throw new Error("Video size must be less than 100MB");
-        }
-        setUploadProgress(0);
-        const base64 = Buffer.from(await file.arrayBuffer()).toString("base64");
-        const { outputPaths } = await processVideo(base64, `${Date.now()}`);
-        const totalResolutions = Object.keys(outputPaths).length;
-        let processedResolutions = 0;
-
-        const uploadPromises = Object.entries(outputPaths).map(
-          async ([resolution, path]) => {
-            const buffer = await readAndProcessVideo(path);
-            const s3Key = `videos/${
-              channelData?._id || "unknown"
-            }/${Date.now()}-${resolution}.mp4`;
-            const url = await uploadToS3(buffer, s3Key, "video/mp4");
-            processedResolutions++;
-            setUploadProgress((processedResolutions / totalResolutions) * 100);
-            return [resolution, { url, s3Key }] as [
-              string,
-              { url: string; s3Key: string }
-            ];
-          }
-        );
-
-        const uploadedResults = await Promise.all(uploadPromises);
-        uploadedFallbackVideoUrls = Object.fromEntries(uploadedResults);
-        setFallbackVideoUrls(uploadedFallbackVideoUrls);
-      } else if (
-        formData.fallbackVideo &&
-        typeof formData.fallbackVideo === "object"
-      ) {
-        uploadedFallbackVideoUrls = formData.fallbackVideo;
-      }
-
-      return { uploadedThumbnailUrl, uploadedFallbackVideoUrls };
-    } catch (error: any) {
-      console.error("Upload error:", error);
-      throw new Error(error.message || "Failed to upload files");
+    if (formData.thumbnail && typeof formData.thumbnail !== "string") {
+      const file = formData.thumbnail as File;
+      uploadedThumbnailUrl = await uploadToCloudinary(file);
+      setThumbnailUrl(uploadedThumbnailUrl);
+    } else if (typeof formData.thumbnail === "string") {
+      uploadedThumbnailUrl = formData.thumbnail;
     }
+
+    if (formData.fallbackVideo && formData.fallbackVideo instanceof File) {
+      const file = formData.fallbackVideo as File;
+      const base64 = Buffer.from(await file.arrayBuffer()).toString("base64");
+      const { outputPaths } = await processVideo(base64, `${Date.now()}`);
+      const totalResolutions = Object.keys(outputPaths).length;
+      let processedResolutions = 0;
+
+      const uploadPromises = Object.entries(outputPaths).map(
+        async ([resolution, path]) => {
+          const buffer = await readAndProcessVideo(path);
+          const s3Key = `videos/${
+            channelData?._id || "unknown"
+          }/${Date.now()}-${resolution}.mp4`;
+          const url = await uploadToS3(buffer, s3Key, "video/mp4");
+          processedResolutions++;
+          setUploadProgress((processedResolutions / totalResolutions) * 100);
+          return [resolution, { url, s3Key }] as [
+            string,
+            { url: string; s3Key: string }
+          ];
+        }
+      );
+
+      const uploadedResults = await Promise.all(uploadPromises);
+      uploadedFallbackVideoUrls = Object.fromEntries(uploadedResults);
+      setFallbackVideoUrls(uploadedFallbackVideoUrls);
+    } else if (
+      formData.fallbackVideo &&
+      typeof formData.fallbackVideo === "object"
+    ) {
+      uploadedFallbackVideoUrls = formData.fallbackVideo;
+    }
+
+    return { uploadedThumbnailUrl, uploadedFallbackVideoUrls };
   };
 
   const validateStep = () => {
@@ -297,26 +289,11 @@ const CreateStreamModal: React.FC<CreateStreamModalProps> = ({
     };
     let isValid = true;
 
-    // if (currentStep === 0) {
-    //     if (!formData.title.trim()) {
-    //       newErrors.title = "Title is required";
-    //       isValid = false;
-    //     }
-    //     if (!formData.thumbnail) {
-    //       newErrors.thumbnail = "Thumbnail is required";
-    //       isValid = false;
-    //     }
-    //     if (!formData.description) {
-    //       newErrors.description = "Description is required";
-    //       isValid = false;
-    //     }
-    //   }
-
-    if (currentStep === 1) {
-      // if (!formData.fallbackVideo) {
-      //   newErrors.fallbackVideo = "Fallback video is required";
-      //   isValid = false;
-      // }
+    if (currentStep === 0) {
+      if (!formData.title.trim()) {
+        newErrors.title = "Title is required";
+        isValid = false;
+      }
     }
 
     if (currentStep === 2 && formData.isScheduled) {
@@ -324,12 +301,21 @@ const CreateStreamModal: React.FC<CreateStreamModalProps> = ({
       const minTime = addMinutes(now, 5);
       if (
         !formData.schedule.dateTime ||
-        isNaN(formData.schedule.dateTime.getTime()) ||
         isBefore(formData.schedule.dateTime, minTime)
       ) {
         newErrors.schedule =
           "Scheduled time must be at least 5 minutes from now.";
         isValid = false;
+      } else {
+        const scheduledTimes = existingStreams
+          .filter((s) => s.status === "scheduled")
+          .map((s) => new Date(s.schedule.dateTime).getTime());
+        const newTime = formData.schedule.dateTime.getTime();
+        const minGap = 5 * 60 * 1000;
+        if (scheduledTimes.some((time) => Math.abs(time - newTime) < minGap)) {
+          newErrors.schedule = "Streams must be at least 5 minutes apart.";
+          isValid = false;
+        }
       }
     }
 
@@ -337,47 +323,30 @@ const CreateStreamModal: React.FC<CreateStreamModalProps> = ({
     return isValid;
   };
 
-
   const handleNext = async () => {
     if (validateStep()) {
       if (currentStep === steps.length - 1) {
-        try {
-          const { uploadedThumbnailUrl, uploadedFallbackVideoUrls } =
-            await uploadFiles();
+        const { uploadedThumbnailUrl, uploadedFallbackVideoUrls } =
+          await uploadFiles();
+        const now = new Date();
+        const status = formData.isScheduled ? "scheduled" : "pending";
 
-          const now = new Date();
-          const status: "pending" | "scheduled" | "started" | "stopped" =
-            formData.isScheduled
-              ? isBefore(now, formData.schedule.dateTime)
-                ? "scheduled"
-                : "started"
-              : "started";
+        const streamData = {
+          ...formData,
+          thumbnail: uploadedThumbnailUrl || "",
+          fallbackVideo: uploadedFallbackVideoUrls,
+          channelId: channelData?._id || "",
+          schedule: {
+            dateTime: formData.isScheduled ? formData.schedule.dateTime : null,
+          },
+          status,
+          createdBy: userData?.user?._id,
+        };
 
-          const streamData = {
-            ...formData,
-            thumbnail: uploadedThumbnailUrl || "",
-            fallbackVideo: uploadedFallbackVideoUrls,
-            channelId: channelData?._id || "",
-            schedule: {
-              dateTime: formData.isScheduled
-                ? formData.schedule.dateTime
-                : new Date(),
-            },
-            status,
-          };
-
-          console.log("Sending to backend:", streamData);
-          await createStream(streamData).unwrap();
-          setShowStreamPreview(true);
-          onClose();
-        } catch (error: any) {
-          console.error("Error in handleNext:", error);
-          setErrors((prev) => ({
-            ...prev,
-            thumbnail: error?.message?.includes("thumbnail") ? error.message : "",
-            fallbackVideo: error?.message?.includes("video") ? error.message : "",
-          }));
-        }
+        await createStream(streamData).unwrap();
+        refetchStreams();
+        if (!formData.isScheduled) setShowStreamPreview(true);
+        onClose();
       } else {
         setCurrentStep((prev) => prev + 1);
       }
@@ -421,9 +390,6 @@ const CreateStreamModal: React.FC<CreateStreamModalProps> = ({
                 placeholder="Tell viewers more about your stream"
                 className="bg-zinc-800 border-zinc-600 text-white h-32"
               />
-              {errors.description && (
-                <p className="text-red-500 text-sm">{errors.description}</p>
-              )}
             </div>
 
             <div className="space-y-2">
@@ -483,7 +449,7 @@ const CreateStreamModal: React.FC<CreateStreamModalProps> = ({
             </div>
 
             <div className="space-y-2">
-              <Label className="text-white">Thumbnail (required)</Label>
+              <Label className="text-white">Thumbnail</Label>
               <div className="border-2 border-dashed border-blue-400 rounded-lg p-8 text-center flex flex-col items-center justify-center space-y-2">
                 {imagePreview ? (
                   <img
@@ -529,7 +495,6 @@ const CreateStreamModal: React.FC<CreateStreamModalProps> = ({
                 <AlertCircle className="h-4 w-4 text-blue-400" />
                 <AlertDescription>
                   This video will be shown to viewers when you're not online.
-                  Upload a welcome video or previous stream recording.
                 </AlertDescription>
               </Alert>
               <div className="border-2 border-dashed border-blue-400 rounded-lg p-6 text-center flex flex-col items-center justify-center space-y-4">
@@ -559,10 +524,7 @@ const CreateStreamModal: React.FC<CreateStreamModalProps> = ({
                   <>
                     <Video className="h-12 w-12 text-blue-400" />
                     <p className="text-gray-400 text-sm">
-                      Select a fallback video (MP4, WebM, OGG)
-                    </p>
-                    <p className="text-gray-500 text-xs">
-                      Maximum file size: 100MB
+                      Select a fallback video
                     </p>
                     <input
                       type="file"
@@ -615,8 +577,7 @@ const CreateStreamModal: React.FC<CreateStreamModalProps> = ({
                     <SelectContent className="bg-zinc-800 border-zinc-600 text-white">
                       {playlistLoading ? (
                         <SelectItem value="loading">Loading...</SelectItem>
-                      ) : Array.isArray(playlistData) &&
-                        playlistData?.length ? (
+                      ) : Array.isArray(playlistData) && playlistData.length ? (
                         playlistData.map((playlist: any) => (
                           <SelectItem key={playlist._id} value={playlist._id}>
                             {playlist.title}
@@ -723,9 +684,6 @@ const CreateStreamModal: React.FC<CreateStreamModalProps> = ({
             </div>
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-white">Visibility</h3>
-              <p className="text-sm text-gray-400">
-                Choose who can see your stream.
-              </p>
               <RadioGroup
                 value={formData.visibility}
                 onValueChange={(value) => handleChange("visibility", value)}
@@ -858,7 +816,7 @@ const CreateStreamModal: React.FC<CreateStreamModalProps> = ({
                             );
                             newDate.setHours(parseInt(hours));
                             newDate.setMinutes(parseInt(minutes));
-                            newDate.setSeconds(0); // Reset seconds for consistency
+                            newDate.setSeconds(0);
                             handleScheduleChange(newDate);
                           }}
                         >
@@ -903,23 +861,6 @@ const CreateStreamModal: React.FC<CreateStreamModalProps> = ({
                   )}
                 </div>
               )}
-            </div>
-
-            <div className="mt-4">
-              <Alert className="bg-green-950 border-green-800 text-green-100">
-                <div className="flex items-start">
-                  <div className="flex-shrink-0 mr-2">
-                    <Video className="h-5 w-5 text-green-400" />
-                  </div>
-                  <AlertDescription>
-                    <span className="font-semibold block mb-1">
-                      Fallback video is configured
-                    </span>
-                    When you're not streaming live, your fallback video will be
-                    shown to viewers.
-                  </AlertDescription>
-                </div>
-              </Alert>
             </div>
           </div>
         );

@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import * as mediasoupClient from "mediasoup-client";
 import io from "socket.io-client";
-import { saveAs } from "file-saver";
 import {
   Camera,
   Mic,
@@ -25,7 +24,6 @@ import {
   MoreVertical,
   ChevronLeft,
   Plus,
-  Calendar,
   Music,
   Code,
   MessageSquare,
@@ -55,6 +53,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { saveAs } from "file-saver";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
@@ -71,8 +70,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { uploadToCloudinary } from "@/app/lib/action/user";
+import { uploadToS3 } from "@/app/lib/action/s3";
 
-// Interface for captions
 interface Caption {
   id: string;
   text: string;
@@ -97,27 +96,30 @@ interface LiveStudioProps {
     category: string;
     visibility: string;
     thumbnail?: string;
-    schedule: { dateTime: Date };
     status: "pending" | "scheduled" | "started" | "stopped";
     createdAt: Date;
+    fallbackVideoUrl?: string;
     updatedAt: Date;
+    schedule?: { dateTime: string };
   }[];
   user: any;
   channelData: any;
+  role?: "host" | "guest";
 }
 
 export const LiveStudio: React.FC<LiveStudioProps> = ({
   streams,
   user,
   channelData,
+  role = "host",
 }) => {
-  // Existing state variables
   const [isMuted, setIsMuted] = useState(true);
   const [isCameraOn, setIsCameraOn] = useState(false);
   const [showChat, setShowChat] = useState(true);
   const [fullScreen, setFullScreen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [selectedLayout, setSelectedLayout] = useState(1);
+  const [saveLocally, setSaveLocally] = useState(false);
   const [scenes, setScenes] = useState<Scene[]>(() => {
     const savedScenes = localStorage.getItem(`scenes_${channelData?._id}`);
     return savedScenes
@@ -159,18 +161,20 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [volume, setVolume] = useState(50);
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
-  const [isHost, setIsHost] = useState(false);
+  const [isHost, setIsHost] = useState(role === "host");
   const [deviceInitialized, setDeviceInitialized] = useState(false);
   const [isMediaModalOpen, setIsMediaModalOpen] = useState(false);
   const [newMediaUrl, setNewMediaUrl] = useState("");
+  const [privateMessages, setPrivateMessages] = useState<any[]>([]);
+  const [newPrivateMessage, setNewPrivateMessage] = useState("");
+  const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
+  const [streamerLeft, setStreamerLeft] = useState(false);
   const [isLive, setIsLive] = useState(false);
   const [isMobileView, setIsMobileView] = useState(false);
   const [isMirrored, setIsMirrored] = useState(false);
   const [quality, setQuality] = useState("720p");
-  const [scheduledTime, setScheduledTime] = useState<Date | null>(null);
   const [isRecordingActive, setIsRecordingActive] = useState(false);
-
-  // New state variables
+  const [showPrivateChat, setShowPrivateChat] = useState(false);
   const [messages, setMessages] = useState([
     { id: 1, user: "Viewer1", message: "Great stream!", time: "12:51" },
     {
@@ -190,9 +194,19 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   const [userInitials, setUserInitials] = useState("DF");
   const [isMusicPlaying, setIsMusicPlaying] = useState(false);
   const [musicUrl, setMusicUrl] = useState<string | null>(null);
-
   const [newCaption, setNewCaption] = useState("");
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const [canGoLive, setCanGoLive] = useState(false);
 
+  // Refs
+  const socket = useRef<any>(null);
+  const studioRef = useRef<HTMLDivElement>(null);
+  const webcamVideoRef = useRef<HTMLVideoElement>(null);
+  const screenVideoRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const fallbackVideoRef = useRef<HTMLVideoElement>(null);
+  const stopRecordingRef = useRef<(() => void) | null>(null);
   const [device, setDevice] = useState<mediasoupClient.Device | null>(null);
   const [producerTransport, setProducerTransport] =
     useState<mediasoupClient.types.Transport | null>(null);
@@ -202,13 +216,8 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     useState<mediasoupClient.types.Producer | null>(null);
   const [screenProducer, setScreenProducer] =
     useState<mediasoupClient.types.Producer | null>(null);
-  const socket = useRef<any>(null);
 
-  const studioRef = useRef<HTMLDivElement>(null);
-  const webcamVideoRef = useRef<HTMLVideoElement>(null);
-  const screenVideoRef = useRef<HTMLVideoElement>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
-
+  // Constants
   const currentStream: any = streams[0];
   const streamTitle = currentStream?.title || "Live Stream";
   const streamStatus = currentStream?.status || "pending";
@@ -226,7 +235,6 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     { label: "720p", constraints: { width: 1280, height: 720 } },
     { label: "1080p", constraints: { width: 1920, height: 1080 } },
   ];
-
   const participants = [
     user?.username || "Donex fdz",
     "Viewer1",
@@ -236,7 +244,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   ];
   const isSingleParticipant = participants.length === 1;
 
-  // Existing useEffect hooks remain the same
+  // Effects
   useEffect(() => {
     socket.current = io("https://localhost:3011", {
       transports: ["websocket", "polling"],
@@ -247,21 +255,35 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
       timeout: 5000,
     });
 
-    socket.current.on("connect", () => {
-      console.log(`Socket connected`);
-    });
+    socket.current.on("connect", () => console.log(`Socket connected`));
 
-    socket.current.emit(
-      "joinRoom",
-      { roomId, userId: user?._id },
-      (response: any) => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get("token");
+    if (token && role === "guest") {
+      socket.current.emit("verifyInvite", { token }, (response: any) => {
         if (response.success) {
-          initMediaSoup();
+          socket.current.emit(
+            "joinRoom",
+            { roomId: response.roomId, userId: "guest_" + Date.now() },
+            (res: any) => {
+              if (res.success) initMediaSoup();
+            }
+          );
+        } else {
+          console.error("Invalid invite token");
         }
-      }
-    );
+      });
+    } else {
+      socket.current.emit(
+        "joinRoom",
+        { roomId, userId: user?._id },
+        (response: any) => {
+          if (response.success) initMediaSoup();
+        }
+      );
+    }
 
-    setIsHost(user?._id === currentStream?.createdBy);
+    setIsHost(role === "host" && user?._id === currentStream?.createdBy);
 
     const initMediaSoup = async () => {
       try {
@@ -283,55 +305,91 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     };
 
     if (user?.username) {
-      const nameParts = user?.username.split(" ");
-      if (nameParts.length >= 2) {
-        setUserInitials(`${nameParts[0][0]}${nameParts[1][0]}`);
-      } else if (nameParts.length === 1 && nameParts[0].length > 0) {
-        setUserInitials(nameParts[0][0]);
-      }
+      const nameParts = user.username.split(" ");
+      setUserInitials(
+        nameParts.length >= 2
+          ? `${nameParts[0][0]}${nameParts[1][0]}`
+          : nameParts[0][0]
+      );
     }
 
-    const checkSchedule = () => {
-      if (scheduledTime && !isLive) {
-        const now = new Date();
-        if (now >= scheduledTime) {
-          toggleLive();
-          setScheduledTime(null);
-        }
+    socket.current.on(
+      "streamerLeft",
+      ({ roomId: receivedRoomId }: { roomId: string }) => {
+        if (receivedRoomId === roomId) setStreamerLeft(true);
       }
-    };
+    );
 
-    const scheduleInterval = setInterval(checkSchedule, 1000);
+    window.addEventListener("beforeunload", handleBeforeUnload);
 
     return () => {
-      clearInterval(scheduleInterval);
-      cleanupStream();
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      socket.current.off("streamerLeft");
+      if (isLive) cleanupStream();
     };
-  }, [user?.username, user?._id, currentStream, scheduledTime, isLive]);
+  }, [user?.username, user?._id, currentStream, isLive, channelId, role]);
 
   useEffect(() => {
-    if (device && deviceInitialized && isCameraOn) {
-      startWebcamStream();
-    }
+    if (device && deviceInitialized && isCameraOn) startWebcamStream();
   }, [device, deviceInitialized, isCameraOn]);
 
   useEffect(() => {
     localStorage.setItem(`scenes_${channelId}`, JSON.stringify(scenes));
     localStorage.setItem(`captions_${channelId}`, JSON.stringify(captions));
-  }, [scenes, captions, channelId]);
+    if (musicUrl) localStorage.setItem(`music_${channelId}`, musicUrl);
+  }, [scenes, captions, musicUrl, channelId]);
 
   useEffect(() => {
-    const handleFullscreenChange = () => {
+    const handleFullscreenChange = () =>
       setFullScreen(!!document.fullscreenElement);
-    };
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     return () =>
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, []);
 
+  // Countdown logic for scheduled streams
+  useEffect(() => {
+    if (currentStream?.schedule?.dateTime && !isLive) {
+      const scheduleTime = new Date(currentStream.schedule.dateTime).getTime();
+      const now = Date.now();
+      const timeDiff = (scheduleTime - now) / 1000; // in seconds
+
+      if (timeDiff > 0) {
+        const countdownStart = Math.max(timeDiff - 10, 0);
+        const timeoutId = setTimeout(() => {
+          setCountdown(10);
+          const intervalId = setInterval(() => {
+            setCountdown((prev) => {
+              if (prev === 1) {
+                clearInterval(intervalId);
+                setCanGoLive(true);
+                return null;
+              }
+              return prev! - 1;
+            });
+          }, 1000);
+        }, countdownStart * 1000);
+
+        return () => clearTimeout(timeoutId);
+      } else {
+        setCanGoLive(true);
+      }
+    } else {
+      setCanGoLive(true);
+    }
+  }, [currentStream, isLive]);
+
+  // Functions
+  const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+    if (isLive) {
+      socket.current?.emit("streamerLeft", { roomId });
+      e.preventDefault();
+      e.returnValue = "You are streaming. Are you sure you want to leave?";
+    }
+  };
+
   const startWebcamStream = async () => {
     if (!device || !socket.current) return;
-
     try {
       const selectedQuality = qualityOptions.find((q) => q.label === quality);
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -345,11 +403,9 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
         webcamVideoRef.current.style.transform = isMirrored
           ? "scaleX(-1)"
           : "scaleX(1)";
-        try {
-          await webcamVideoRef.current.play();
-        } catch (err) {
-          console.error("Error playing webcam video:", err);
-        }
+        await webcamVideoRef.current
+          .play()
+          .catch((err) => console.error("Error playing webcam video:", err));
       }
 
       const transport: any =
@@ -397,7 +453,6 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
       video: constraints || true,
       audio: true,
     });
-
     if (webcamVideoRef.current) {
       webcamVideoRef.current.srcObject = stream;
       webcamVideoRef.current.style.transform = isMirrored
@@ -419,7 +474,6 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
         {},
         async (params: any) => {
           const transport = device!.createSendTransport(params);
-
           transport.on("connect", async ({ dtlsParameters }, callback) => {
             socket.current?.emit(
               "connectProducerTransport",
@@ -427,7 +481,6 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
               callback
             );
           });
-
           transport.on("produce", async ({ kind, rtpParameters }, callback) => {
             socket.current?.emit(
               "produce",
@@ -435,7 +488,6 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
               (id: string) => callback({ id })
             );
           });
-
           resolve(transport);
         }
       );
@@ -443,71 +495,89 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   };
 
   const startRecording = async () => {
-    if (!webcamVideoRef.current?.srcObject) return;
+    const activeStream =
+      webcamVideoRef.current?.srcObject || screenVideoRef.current?.srcObject;
+    if (!activeStream) return;
 
-    const stream = webcamVideoRef.current.srcObject as MediaStream;
+    const stream = activeStream as MediaStream;
     const mediaRecorder = new MediaRecorder(stream, {
       mimeType: "video/webm;codecs=vp9",
     });
-
     const recordedChunks: Blob[] = [];
 
     mediaRecorder.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        recordedChunks.push(event.data);
-      }
+      if (event.data.size > 0) recordedChunks.push(event.data);
     };
 
-    mediaRecorder.onstop = () => {
+    mediaRecorder.onstop = async () => {
       const blob = new Blob(recordedChunks, { type: "video/webm" });
-      saveAs(blob, `recording-${new Date().toISOString()}.webm`);
+      if (saveLocally) {
+        const fileName = `recording_${channelId}_${Date.now()}.webm`;
+        saveAs(blob, fileName);
+      } else {
+        const buffer = Buffer.from(await blob.arrayBuffer());
+        const key = `recordings/${channelId}/${Date.now()}.webm`;
+        try {
+          const s3Url = await uploadToS3(buffer, key, "video/webm");
+          setRecordingUrl(s3Url);
+          socket.current?.emit("recordingAvailable", { roomId, url: s3Url });
+        } catch (error) {
+          console.error("Error uploading to S3:", error);
+        }
+      }
     };
 
     mediaRecorder.start();
     setIsRecordingActive(true);
     socket.current?.emit("startRecording", { roomId });
 
-    return () => {
+    const stopRecording = () => {
       mediaRecorder.stop();
       setIsRecordingActive(false);
       socket.current?.emit("stopRecording", { roomId });
     };
+    stopRecordingRef.current = stopRecording;
+    return stopRecording;
   };
 
   const toggleRecording = () => {
     if (!isRecording) {
+      if (!isCameraOn && !isScreenSharing) {
+        console.log("Cannot record: Camera and Screen Share are off");
+        return;
+      }
       const stopRecording = startRecording();
       setIsRecording(true);
       setTimeout(() => {
-        stopRecording && stopRecording();
-        setIsRecording(false);
-      }, 60000); // Stop after 1 minute
+        if (stopRecordingRef.current) {
+          stopRecordingRef.current();
+          setIsRecording(false);
+        }
+      }, 60000);
     } else {
-      setIsRecording(false);
+      if (stopRecordingRef.current) {
+        stopRecordingRef.current();
+        setIsRecording(false);
+        stopRecordingRef.current = null;
+      }
     }
   };
 
   const toggleFullScreen = () => {
-    if (!fullScreen) {
-      studioRef.current?.requestFullscreen();
-    } else {
-      document.exitFullscreen();
-    }
+    if (!fullScreen) studioRef.current?.requestFullscreen();
+    else document.exitFullscreen();
   };
 
   const toggleMute = () => {
     const newMutedState = !isMuted;
     setIsMuted(newMutedState);
-
     if (webcamVideoRef.current?.srcObject) {
       const stream = webcamVideoRef.current.srcObject as MediaStream;
       stream
         .getAudioTracks()
         .forEach((track) => (track.enabled = !newMutedState));
     }
-    if (audioProducer) {
-      audioProducer.enabled = !newMutedState;
-    }
+    if (audioProducer) audioProducer.enabled = !newMutedState;
   };
 
   const toggleCamera = async () => {
@@ -523,18 +593,15 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
         const stream = webcamVideoRef.current.srcObject as MediaStream;
         stream.getVideoTracks().forEach((track) => track.stop());
       }
-
       if (audioProducer && !isMuted) {
         const stream = new MediaStream();
-        if (audioProducer?.track) {
-          stream.addTrack(audioProducer.track);
-        }
+        if (audioProducer?.track) stream.addTrack(audioProducer.track);
         if (webcamVideoRef.current) {
           webcamVideoRef.current.srcObject = stream;
           await webcamVideoRef.current.play();
         }
-      } else {
-        webcamVideoRef.current!.srcObject = null;
+      } else if (webcamVideoRef.current) {
+        webcamVideoRef.current.srcObject = null;
       }
     } else {
       const selectedQuality = qualityOptions.find((q) => q.label === quality);
@@ -542,7 +609,6 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
         video: selectedQuality?.constraints || true,
         audio: true,
       });
-
       if (webcamVideoRef.current) {
         webcamVideoRef.current.srcObject = stream;
         webcamVideoRef.current.style.transform = isMirrored
@@ -591,21 +657,20 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
       setTimeout(async () => {
         try {
           const screenStream: any =
-            await navigator.mediaDevices.getDisplayMedia({
-              video: true,
-            });
+            await navigator.mediaDevices.getDisplayMedia({ video: true });
           if (screenVideoRef.current) {
             screenVideoRef.current.srcObject = screenStream;
-            try {
-              await screenVideoRef.current.play();
-            } catch (err) {
-              console.error("Error playing screen share video:", err);
-            }
+            await screenVideoRef.current
+              .play()
+              .catch((err) =>
+                console.error("Error playing screen share video:", err)
+              );
             screenStream.oninactive = () => {
               setIsScreenSharing(false);
               screenProducer?.close();
               setScreenProducer(null);
-              screenVideoRef.current!.srcObject = null;
+              if (screenVideoRef.current)
+                screenVideoRef.current.srcObject = null;
             };
           }
 
@@ -613,7 +678,6 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
             producerTransport || (await createProducerTransport());
           const screenTrack = screenStream.getVideoTracks()[0];
           const producer = await transport.produce({ track: screenTrack });
-
           setScreenProducer(producer);
           if (!producerTransport) setProducerTransport(transport);
         } catch (err) {
@@ -639,18 +703,17 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     setVolume(value[0]);
     if (webcamVideoRef.current) webcamVideoRef.current.volume = value[0] / 100;
     if (screenVideoRef.current) screenVideoRef.current.volume = value[0] / 100;
-    if (audioRef.current) audioRef.current.volume = value[0] / 100; // Adjust music volume
+    if (audioRef.current) audioRef.current.volume = value[0] / 100;
   };
 
-  const toggleVolumeSlider = () => {
-    setShowVolumeSlider(!showVolumeSlider);
-  };
+  const toggleVolumeSlider = () => setShowVolumeSlider(!showVolumeSlider);
 
   const toggleLive = () => {
     if (isLive) {
       cleanupStream();
       socket.current?.emit("stopStream", { roomId });
       setIsLive(false);
+      setStreamerLeft(false);
     } else {
       socket.current?.emit("startStream", { roomId });
       setIsLive(true);
@@ -660,24 +723,19 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
 
   const cleanupStream = () => {
     const stopTracks = (stream: MediaStream | null) => {
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
-      }
+      if (stream) stream.getTracks().forEach((track) => track.stop());
     };
-
     stopTracks(webcamVideoRef.current?.srcObject as MediaStream);
     stopTracks(screenVideoRef.current?.srcObject as MediaStream);
     if (webcamVideoRef.current && screenVideoRef.current) {
       webcamVideoRef.current.srcObject = null;
       screenVideoRef.current.srcObject = null;
     }
-
     videoProducer?.close();
     audioProducer?.close();
     screenProducer?.close();
     producerTransport?.close();
     socket.current?.disconnect();
-
     setVideoProducer(null);
     setAudioProducer(null);
     setScreenProducer(null);
@@ -685,7 +743,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     setIsScreenSharing(false);
     setIsCameraOn(false);
     setIsMuted(true);
-    setIsMusicPlaying(false); 
+    setIsMusicPlaying(false);
     if (audioRef.current) audioRef.current.pause();
   };
 
@@ -707,19 +765,44 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     }
   };
 
-  const playMusic = async () => {
-    if (!musicUrl) {
-      // Use a sample music API (e.g., Free Music Archive or YouTube Data API)
-      // For simplicity, we'll use a sample URL
-      const sampleMusicUrl =
-        "https://www.mfiles.co.uk/mp3-downloads/gs-cd-track2.mp3";
-      setMusicUrl(sampleMusicUrl);
+  const sendPrivateMessage = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPrivateMessage.trim()) {
+      const message = {
+        id: privateMessages.length + 1,
+        user: user?.username || "User",
+        message: newPrivateMessage,
+        time: new Date().toLocaleTimeString("en-US", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      };
+      setPrivateMessages([...privateMessages, message]);
+      socket.current?.emit("privateMessage", {
+        roomId,
+        message,
+        userId: user?._id,
+      });
+      setNewPrivateMessage("");
+    }
+  };
+
+  const handleMusicUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const url = URL.createObjectURL(file);
+      setMusicUrl(url);
+      localStorage.setItem(`music_${channelId}`, url);
       if (audioRef.current) {
-        audioRef.current.src = sampleMusicUrl;
+        audioRef.current.src = url;
         audioRef.current.play();
         setIsMusicPlaying(true);
       }
-    } else if (audioRef.current) {
+    }
+  };
+
+  const playMusic = () => {
+    if (musicUrl && audioRef.current) {
       audioRef.current.play();
       setIsMusicPlaying(true);
     }
@@ -744,9 +827,8 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     }
   };
 
-  const deleteCaption = (id: string) => {
+  const deleteCaption = (id: string) =>
     setCaptions(captions.filter((caption) => caption.id !== id));
-  };
 
   const layouts = [
     {
@@ -803,21 +885,31 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
 
   const getInitials = (username: string) => {
     const nameParts = username.split(" ");
-    if (nameParts.length >= 2) {
-      return `${nameParts[0][0]}${nameParts[1][0]}`.toUpperCase();
-    } else if (nameParts.length === 1 && nameParts[0].length > 0) {
-      return nameParts[0][0].toUpperCase();
-    }
-    return "U";
+    return nameParts.length >= 2
+      ? `${nameParts[0][0]}${nameParts[1][0]}`.toUpperCase()
+      : nameParts[0][0].toUpperCase() || "U";
   };
 
-  const toggleView = () => {
-    setIsMobileView(!isMobileView);
+  const toggleView = () => setIsMobileView(!isMobileView);
+
+  const generateInviteLink = () => {
+    socket.current.emit(
+      "generateInvite",
+      { roomId, userId: user?._id },
+      (response: any) => {
+        if (response.inviteLink) {
+          setInviteLink(response.inviteLink);
+          navigator.clipboard.writeText(response.inviteLink);
+          console.log("Invite link copied:", response.inviteLink);
+        }
+      }
+    );
   };
 
+  // Render
   return (
     <motion.div
-      className={`flex flex-col w-full h-screen ${
+      className={`flex flex-col w-full h-full ${
         isMobileView ? "flex-row" : "flex-col"
       } bg-[#0a152c]`}
       ref={studioRef}
@@ -825,6 +917,27 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
       animate={{ opacity: 1 }}
       transition={{ duration: 0.5 }}
     >
+      {/* Countdown Overlay */}
+      {countdown !== null && !isLive && (
+        <motion.div
+          className="absolute inset-0 flex items-center justify-center bg-black/80 z-50"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          <motion.div
+            key={countdown}
+            className="text-white text-9xl font-bold"
+            initial={{ scale: 0.5, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 1.5, opacity: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            {countdown}
+          </motion.div>
+        </motion.div>
+      )}
+
       <div
         className={`flex items-center justify-between px-4 py-2 bg-[#0a152c] border-b border-[#1a2641] w-full`}
       >
@@ -858,9 +971,19 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
               id="recording"
               checked={isRecording}
               onCheckedChange={toggleRecording}
+              disabled={!isCameraOn && !isScreenSharing}
             />
             <Label htmlFor="recording" className="text-white">
               Record
+            </Label>
+            <Switch
+              id="save-locally"
+              checked={saveLocally}
+              onCheckedChange={setSaveLocally}
+              disabled={isRecording}
+            />
+            <Label htmlFor="save-locally" className="text-white">
+              {saveLocally ? "Save Locally" : "Save to Cloud"}
             </Label>
           </div>
           <Button
@@ -868,6 +991,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
             size="sm"
             className="bg-[#ff4d00] hover:bg-[#ff6b2c] text-white border-none"
             onClick={toggleLive}
+            disabled={!isLive && !canGoLive}
           >
             {isLive ? "Stop Live" : "Go Live"}
           </Button>
@@ -961,398 +1085,443 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
           </div>
 
           <div className="flex-grow flex justify-center relative h-full">
-            <div
-              className="absolute inset-0 bg-cover bg-center z-0"
-              style={{
-                backgroundImage:
-                  scenes.find((s) => s.isActive)?.type === "media" &&
-                  scenes.find((s) => s.isActive)?.mediaUrl
-                    ? `url(${scenes.find((s) => s.isActive)?.mediaUrl})`
-                    : "linear-gradient(to bottom right, #ff416c, #ff4b2b)",
-                backgroundSize: "cover",
-                backgroundPosition: "center",
-              }}
-            />
-
-            <motion.div
-              className={`relative w-full max-w-4xl h-full flex items-center justify-center ${
-                isSingleParticipant ? "" : layouts[selectedLayout - 1].className
-              } transition-all duration-300 ease-in-out ${
-                isMobileView ? "max-w-full" : ""
-              }`}
-              layout
-            >
-              {participants.map((participant, index) => (
-                <motion.div
-                  key={index}
-                  className={`rounded-md overflow-hidden relative w-full bg-black ${getParticipantPosition(
-                    participant,
-                    participants.length
-                  )} h-full z-10`}
-                  layout
-                  transition={{ duration: 0.3 }}
-                >
-                  {participant === user?.username && (
-                    <>
-                      <AnimatePresence>
-                        {isScreenSharing ? (
-                          <motion.div
-                            key="screen"
-                            className="w-full h-full relative"
-                            initial={{ opacity: 0, scale: 0.8 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.8 }}
-                            transition={{ duration: 0.3 }}
-                          >
-                            <video
-                              ref={screenVideoRef}
-                              autoPlay
-                              playsInline
-                              muted={isMuted}
-                              className="w-full h-full object-cover"
-                            />
-                          </motion.div>
-                        ) : isCameraOn ? (
-                          <motion.div
-                            key="webcam"
-                            className="w-full h-full relative"
-                            initial={{ opacity: 0, scale: 0.8 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.8 }}
-                            transition={{ duration: 0.3 }}
-                          >
-                            <video
-                              ref={webcamVideoRef}
-                              autoPlay
-                              playsInline
-                              muted={isMuted}
-                              className="w-full h-full object-cover"
-                              style={{
-                                transform: isMirrored
-                                  ? "scaleX(-1)"
-                                  : "scaleX(1)",
-                              }}
-                            />
-                          </motion.div>
-                        ) : (
-                          <motion.div
-                            key="off"
-                            className="w-full h-full flex items-center justify-center bg-gray-800"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            transition={{ duration: 0.3 }}
-                          >
-                            <div className="w-24 h-24 rounded-full bg-blue-700 flex items-center justify-center">
-                              <span className="text-4xl font-bold text-white">
-                                {userInitials}
-                              </span>
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-
-                      {isScreenSharing && isCameraOn && (
-                        <motion.div
-                          className="absolute top-2 right-2 w-32 h-24 rounded-md overflow-hidden bg-black z-20"
-                          initial={{ x: 100, opacity: 0 }}
-                          animate={{ x: 0, opacity: 1 }}
-                          exit={{ x: 100, opacity: 0 }}
-                          transition={{ duration: 0.3 }}
-                        >
-                          <video
-                            ref={webcamVideoRef}
-                            autoPlay
-                            playsInline
-                            muted={isMuted}
-                            className="w-full h-full object-cover"
-                            style={{
-                              transform: isMirrored
-                                ? "scaleX(-1)"
-                                : "scaleX(1)",
-                            }}
-                          />
-                        </motion.div>
-                      )}
-                    </>
-                  )}
-                  <div className="absolute bottom-0 left-0 right-0 p-2 bg-[#0a152c40] z-10">
-                    <span className="text-white text-sm">{participant}</span>
-                    {isHost && participant === user?.username && (
-                      <Badge className="ml-2 bg-green-500 text-xs">Host</Badge>
-                    )}
-                  </div>
-                </motion.div>
-              ))}
-
-              <div className="absolute bottom-4 left-4 z-10">
-                {captions.map((caption) => (
-                  <motion.div
-                    key={caption.id}
-                    className="bg-black/70 text-white p-2 rounded-md mb-2"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                  >
-                    {caption.text}
-                  </motion.div>
-                ))}
+            {streamerLeft &&
+            currentStream?.fallbackVideoUrl &&
+            !(role === "guest" && (isCameraOn || isScreenSharing)) ? (
+              <div className="w-full h-full flex flex-col items-center justify-center bg-black">
+                <video
+                  ref={fallbackVideoRef}
+                  src={currentStream.fallbackVideoUrl}
+                  autoPlay
+                  loop
+                  muted
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute text-white text-lg bg-black/70 p-4 rounded">
+                  The streamer is not available. Playing fallback content.
+                </div>
               </div>
+            ) : (
+              <>
+                <div
+                  className="absolute inset-0 bg-cover bg-center z-0 h-full"
+                  style={{
+                    backgroundImage:
+                      scenes.find((s) => s.isActive)?.type === "media" &&
+                      scenes.find((s) => s.isActive)?.mediaUrl
+                        ? `url(${scenes.find((s) => s.isActive)?.mediaUrl})`
+                        : "linear-gradient(to bottom right, #ff416c, #ff4b2b)",
+                  }}
+                />
+                <motion.div
+                  className={`relative w-full max-w-5xl h-screen flex items-center justify-center ${
+                    isSingleParticipant
+                      ? ""
+                      : layouts[selectedLayout - 1].className
+                  } transition-all duration-300 ease-in-out ${
+                    isMobileView ? "max-w-full h-full" : ""
+                  }`}
+                  layout
+                >
+                  {participants.map((participant, index) => (
+                    <motion.div
+                      key={index}
+                      className={`rounded-md overflow-hidden relative w-full bg-black ${getParticipantPosition(
+                        participant,
+                        participants.length
+                      )} h-full z-10`}
+                      layout
+                      transition={{ duration: 0.3 }}
+                    >
+                      {participant === user?.username && (
+                        <>
+                          <AnimatePresence>
+                            {isScreenSharing ? (
+                              <motion.div
+                                key="screen"
+                                className="w-full h-full relative"
+                                initial={{ opacity: 0, scale: 0.8 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.8 }}
+                                transition={{ duration: 0.3 }}
+                              >
+                                <video
+                                  ref={screenVideoRef}
+                                  autoPlay
+                                  playsInline
+                                  muted={isMuted}
+                                  className="w-full h-full object-cover"
+                                />
+                              </motion.div>
+                            ) : isCameraOn ? (
+                              <motion.div
+                                key="webcam"
+                                className="w-full h-full relative"
+                                initial={{ opacity: 0, scale: 0.8 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.8 }}
+                                transition={{ duration: 0.3 }}
+                              >
+                                <video
+                                  ref={webcamVideoRef}
+                                  autoPlay
+                                  playsInline
+                                  muted={isMuted}
+                                  className="w-full h-full object-cover"
+                                  style={{
+                                    transform: isMirrored
+                                      ? "scaleX(-1)"
+                                      : "scaleX(1)",
+                                  }}
+                                />
+                              </motion.div>
+                            ) : (
+                              <motion.div
+                                key="off"
+                                className="w-full h-full flex items-center justify-center bg-gray-800"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                transition={{ duration: 0.3 }}
+                              >
+                                <div className="w-24 h-24 rounded-full bg-blue-700 flex items-center justify-center">
+                                  <span className="text-4xl font-bold text-white">
+                                    {userInitials}
+                                  </span>
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
 
-              <motion.div
-                className="absolute top-2 right-2 flex flex-col gap-1 z-10"
-                initial={{ y: -20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ duration: 0.3 }}
-              >
-                <div className="flex gap-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 p-1 text-white bg-black/40 rounded-full"
-                    onClick={toggleVolumeSlider}
+                          {isScreenSharing && isCameraOn && (
+                            <motion.div
+                              className="absolute top-2 right-2 w-32 h-24 rounded-md overflow-hidden bg-black z-20"
+                              initial={{ x: 100, opacity: 0 }}
+                              animate={{ x: 0, opacity: 1 }}
+                              exit={{ x: 100, opacity: 0 }}
+                              transition={{ duration: 0.3 }}
+                            >
+                              <video
+                                ref={webcamVideoRef}
+                                autoPlay
+                                playsInline
+                                muted={isMuted}
+                                className="w-full h-full object-cover"
+                                style={{
+                                  transform: isMirrored
+                                    ? "scaleX(-1)"
+                                    : "scaleX(1)",
+                                }}
+                              />
+                            </motion.div>
+                          )}
+                        </>
+                      )}
+                      <div className="absolute bottom-0 left-0 right-0 p-2 bg-[#0a152c40] z-10">
+                        <span className="text-white text-sm">
+                          {participant}
+                        </span>
+                        {isHost && participant === user?.username && (
+                          <Badge className="ml-2 bg-green-500 text-xs">
+                            Host
+                          </Badge>
+                        )}
+                      </div>
+                    </motion.div>
+                  ))}
+
+                  <div className="absolute bottom-4 left-4 z-10">
+                    {captions.map((caption) => (
+                      <motion.div
+                        key={caption.id}
+                        className="bg-black/70 text-white p-2 rounded-md mb-2"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                      >
+                        {caption.text}
+                      </motion.div>
+                    ))}
+                  </div>
+
+                  <motion.div
+                    className="absolute top-2 right-2 flex flex-col gap-1 z-10"
+                    initial={{ y: -20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ duration: 0.3 }}
                   >
-                    <Volume2 className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 p-1 text-white bg-black/40 rounded-full"
-                    onClick={toggleFullScreen}
-                  >
-                    {fullScreen ? (
-                      <Minimize2 className="h-4 w-4" />
-                    ) : (
-                      <Maximize2 className="h-4 w-4" />
-                    )}
-                  </Button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
+                    <div className="flex gap-1">
                       <Button
                         variant="ghost"
                         size="sm"
                         className="h-8 w-8 p-1 text-white bg-black/40 rounded-full"
+                        onClick={toggleVolumeSlider}
                       >
-                        <MoreVertical className="h-4 w-4" />
+                        <Volume2 className="h-4 w-4" />
                       </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="bg-[#0a152c] border-[#1a2641] text-white">
-                      <DropdownMenuItem
-                        onClick={() => setIsMirrored(!isMirrored)}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-1 text-white bg-black/40 rounded-full"
+                        onClick={toggleFullScreen}
                       >
-                        <Camera className="mr-2 h-4 w-4" />
-                        {isMirrored ? "Unmirror Camera" : "Mirror Camera"}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger className="flex items-center">
-                            <Settings className="mr-2 h-4 w-4" />
-                            Quality
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent className="bg-[#0a152c] border-[#1a2641] text-white">
-                            {qualityOptions.map((option) => (
-                              <DropdownMenuItem
-                                key={option.label}
-                                onClick={() => changeQuality(option.label)}
+                        {fullScreen ? (
+                          <Minimize2 className="h-4 w-4" />
+                        ) : (
+                          <Maximize2 className="h-4 w-4" />
+                        )}
+                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-1 text-white bg-black/40 rounded-full"
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent className="bg-[#0a152c] border-[#1a2641] text-white">
+                          <DropdownMenuItem
+                            onClick={() => setIsMirrored(!isMirrored)}
+                          >
+                            <Camera className="mr-2 h-4 w-4" />
+                            {isMirrored ? "Unmirror Camera" : "Mirror Camera"}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger className="flex items-center">
+                                <Settings className="mr-2 h-4 w-4" />
+                                Quality
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent className="bg-[#0a152c] border-[#1a2641] text-white">
+                                {qualityOptions.map((option) => (
+                                  <DropdownMenuItem
+                                    key={option.label}
+                                    onClick={() => changeQuality(option.label)}
+                                  >
+                                    {option.label}
+                                  </DropdownMenuItem>
+                                ))}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                    <AnimatePresence>
+                      {showVolumeSlider && (
+                        <motion.div
+                          className="bg-black/60 p-2 rounded-md w-32 z-10"
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <Slider
+                            defaultValue={[volume]}
+                            max={100}
+                            step={1}
+                            onValueChange={handleVolumeChange}
+                            className="w-full"
+                          />
+                          <div className="flex justify-between mt-1">
+                            <VolumeX className="h-3 w-3 text-white" />
+                            <Volume2 className="h-3 w-3 text-white" />
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </motion.div>
+
+                  <motion.div
+                    className="absolute bottom-20 left-1/2 transform -translate-x-1/2 z-10"
+                    initial={{ y: 20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ duration: 0.3 }}
+                  >
+                    <div className="bg-[#0a152c] rounded-md p-1 flex">
+                      {layouts.map((layout) => (
+                        <Button
+                          key={layout.id}
+                          variant="ghost"
+                          size="sm"
+                          className={`h-8 w-12 p-1 ${
+                            selectedLayout === layout.id && !isSingleParticipant
+                              ? "bg-[#1e3a8a] text-white"
+                              : "text-gray-400 hover:bg-[#1a2641]"
+                          }`}
+                          onClick={() =>
+                            !isSingleParticipant && setSelectedLayout(layout.id)
+                          }
+                          disabled={isSingleParticipant}
+                        >
+                          {layout.icon}
+                        </Button>
+                      ))}
+                    </div>
+                  </motion.div>
+
+                  <motion.div
+                    className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-10"
+                    initial={{ y: 20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ duration: 0.3 }}
+                  >
+                    <div className="flex gap-2">
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <motion.div
+                              whileHover={{ scale: 1.1 }}
+                              whileTap={{ scale: 0.9 }}
+                            >
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className={`h-10 w-10 p-0 rounded-full ${
+                                  isMuted
+                                    ? "bg-red-500 text-white border-red-500"
+                                    : "bg-[#0a152c] border-[#1a2641] text-white"
+                                }`}
+                                onClick={toggleMute}
                               >
-                                {option.label}
-                              </DropdownMenuItem>
-                            ))}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-                <AnimatePresence>
-                  {showVolumeSlider && (
-                    <motion.div
-                      className="bg-black/60 p-2 rounded-md w-32 z-10"
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      transition={{ duration: 0.2 }}
-                    >
-                      <Slider
-                        defaultValue={[volume]}
-                        max={100}
-                        step={1}
-                        onValueChange={handleVolumeChange}
-                        className="w-full"
-                      />
-                      <div className="flex justify-between mt-1">
-                        <VolumeX className="h-3 w-3 text-white" />
-                        <Volume2 className="h-3 w-3 text-white" />
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </motion.div>
+                                {isMuted ? (
+                                  <VolumeX className="h-5 w-5" />
+                                ) : (
+                                  <Mic className="h-5 w-5" />
+                                )}
+                              </Button>
+                            </motion.div>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {isMuted ? "Unmute" : "Mute"}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
 
-              <motion.div
-                className="absolute bottom-20 left-1/2 transform -translate-x-1/2 z-10"
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ duration: 0.3 }}
-              >
-                <div className="bg-[#0a152c] rounded-md p-1 flex">
-                  {layouts.map((layout) => (
-                    <Button
-                      key={layout.id}
-                      variant="ghost"
-                      size="sm"
-                      className={`h-8 w-12 p-1 ${
-                        selectedLayout === layout.id && !isSingleParticipant
-                          ? "bg-[#1e3a8a] text-white"
-                          : "text-gray-400 hover:bg-[#1a2641]"
-                      }`}
-                      onClick={() =>
-                        !isSingleParticipant && setSelectedLayout(layout.id)
-                      }
-                      disabled={isSingleParticipant}
-                    >
-                      {layout.icon}
-                    </Button>
-                  ))}
-                </div>
-              </motion.div>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <motion.div
+                              whileHover={{ scale: 1.1 }}
+                              whileTap={{ scale: 0.9 }}
+                            >
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className={`h-10 w-10 p-0 rounded-full ${
+                                  !isCameraOn
+                                    ? "bg-red-500 text-white border-red-500"
+                                    : "bg-[#0a152c] border-[#1a2641] text-white"
+                                }`}
+                                onClick={toggleCamera}
+                              >
+                                <Camera className="h-5 w-5" />
+                              </Button>
+                            </motion.div>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {isCameraOn ? "Turn Off Camera" : "Turn On Camera"}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
 
-              <motion.div
-                className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-10"
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ duration: 0.3 }}
-              >
-                <div className="flex gap-2">
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <motion.div
+                              whileHover={{ scale: 1.1 }}
+                              whileTap={{ scale: 0.9 }}
+                            >
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className={`h-10 w-10 p-0 rounded-full ${
+                                  isScreenSharing
+                                    ? "bg-green-500 text-white border-green-500"
+                                    : "bg-[#0a152c] border-[#1a2641] text-white"
+                                }`}
+                                onClick={toggleScreenShare}
+                              >
+                                <Monitor className="h-5 w-5" />
+                              </Button>
+                            </motion.div>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {isScreenSharing
+                              ? "Stop Screen Share"
+                              : "Start Screen Share"}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <motion.div
+                              whileHover={{ scale: 1.1 }}
+                              whileTap={{ scale: 0.9 }}
+                            >
+                              {isHost && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-10 w-10 p-0 rounded-full bg-[#0a152c] border-[#1a2641] text-white"
+                                  onClick={generateInviteLink}
+                                >
+                                  <Users className="h-5 w-5" />
+                                </Button>
+                              )}
+                            </motion.div>
+                          </TooltipTrigger>
+                          <TooltipContent>Invite Guest</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+
+                      {inviteLink && isHost && (
                         <motion.div
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.9 }}
+                          className="absolute top-16 right-4 bg-[#0a152c] p-2 rounded-md text-white"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ duration: 0.3 }}
                         >
+                          <p>Invite Link: {inviteLink}</p>
                           <Button
-                            variant="outline"
+                            variant="ghost"
                             size="sm"
-                            className={`h-10 w-10 p-0 rounded-full ${
-                              isMuted
-                                ? "bg-red-500 text-white border-red-500"
-                                : "bg-[#0a152c] border-[#1a2641] text-white"
-                            }`}
-                            onClick={toggleMute}
+                            onClick={() => setInviteLink(null)}
+                            className="text-red-500"
                           >
-                            {isMuted ? (
-                              <VolumeX className="h-5 w-5" />
-                            ) : (
-                              <Mic className="h-5 w-5" />
-                            )}
+                            <X className="h-4 w-4" />
                           </Button>
                         </motion.div>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        {isMuted ? "Unmute" : "Mute"}
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                      )}
 
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <motion.div
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.9 }}
-                        >
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className={`h-10 w-10 p-0 rounded-full ${
-                              !isCameraOn
-                                ? "bg-red-500 text-white border-red-500"
-                                : "bg-[#0a152c] border-[#1a2641] text-white"
-                            }`}
-                            onClick={toggleCamera}
-                          >
-                            <Camera className="h-5 w-5" />
-                          </Button>
-                        </motion.div>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        {isCameraOn ? "Turn Off Camera" : "Turn On Camera"}
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <motion.div
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.9 }}
-                        >
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className={`h-10 w-10 p-0 rounded-full ${
-                              isScreenSharing
-                                ? "bg-green-500 text-white border-green-500"
-                                : "bg-[#0a152c] border-[#1a2641] text-white"
-                            }`}
-                            onClick={toggleScreenShare}
-                          >
-                            <Monitor className="h-5 w-5" />
-                          </Button>
-                        </motion.div>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        {isScreenSharing
-                          ? "Stop Screen Share"
-                          : "Start Screen Share"}
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <motion.div
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.9 }}
-                        >
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-10 w-10 p-0 rounded-full bg-[#0a152c] border-[#1a2641] text-white"
-                          >
-                            <Users className="h-5 w-5" />
-                          </Button>
-                        </motion.div>
-                      </TooltipTrigger>
-                      <TooltipContent>Guests</TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <motion.div
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.9 }}
-                        >
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-10 w-10 p-0 rounded-full bg-[#0a152c] border-[#1a2641] text-white"
-                          >
-                            <Settings className="h-5 w-5" />
-                          </Button>
-                        </motion.div>
-                      </TooltipTrigger>
-                      <TooltipContent>Settings</TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
-              </motion.div>
-            </motion.div>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <motion.div
+                              whileHover={{ scale: 1.1 }}
+                              whileTap={{ scale: 0.9 }}
+                            >
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-10 w-10 p-0 rounded-full bg-[#0a152c] border-[#1a2641] text-white"
+                              >
+                                <Settings className="h-5 w-5" />
+                              </Button>
+                            </motion.div>
+                          </TooltipTrigger>
+                          <TooltipContent>Settings</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                  </motion.div>
+                </motion.div>
+              </>
+            )}
 
             <motion.div
               className="absolute top-4 right-4 z-10"
@@ -1379,11 +1548,49 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
               variant="outline"
               size="sm"
               className="text-black border-[#1a2641] hover:bg-[#1a2641]"
+              onClick={() => setShowPrivateChat(!showPrivateChat)}
             >
               <MessageCircle className="h-4 w-4 mr-1" />
               Private Chat
             </Button>
-
+            <AnimatePresence>
+              {showPrivateChat && (
+                <motion.div
+                  className="absolute bottom-16 left-4 w-64 bg-[#0a152c] border border-[#1a2641] p-2 rounded-md shadow-lg"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 10 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <h3 className="text-white text-lg font-semibold mb-2">
+                    Private Chat
+                  </h3>
+                  <div className="bg-black p-2 rounded-md h-48 overflow-y-auto z-30">
+                    {privateMessages.map((message) => (
+                      <div key={message.id} className="text-white mb-2">
+                        <span className="font-bold">{message.user}:</span>{" "}
+                        {message.message}{" "}
+                        <span className="text-gray-400">({message.time})</span>
+                      </div>
+                    ))}
+                  </div>
+                  <form
+                    onSubmit={sendPrivateMessage}
+                    className="flex gap-2 mt-2"
+                  >
+                    <Input
+                      value={newPrivateMessage}
+                      onChange={(e) => setNewPrivateMessage(e.target.value)}
+                      placeholder="Type a private message..."
+                      className="bg-[#1a2641] text-white border-[#1a2641]"
+                    />
+                    <Button type="submit" className="bg-[#ff4d00] text-white">
+                      Send
+                    </Button>
+                  </form>
+                </motion.div>
+              )}
+            </AnimatePresence>
             <div className="flex gap-2">
               <Button
                 variant="ghost"
@@ -1418,10 +1625,16 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
           <div className="space-y-4 w-full px-2">
             <div className="space-y-2">
               <h3 className="text-white text-lg font-semibold">Music</h3>
+              <Input
+                type="file"
+                accept="audio/*"
+                onChange={handleMusicUpload}
+                className="bg-[#1a2641] text-white border-[#1a2641]"
+              />
               <Button
                 onClick={playMusic}
                 className="w-full bg-[#3a1996] text-white hover:bg-[#4c22c0]"
-                disabled={isMusicPlaying}
+                disabled={isMusicPlaying || !musicUrl}
               >
                 <Play className="h-4 w-4 mr-2" /> Play Music
               </Button>
@@ -1469,34 +1682,8 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
             </div>
 
             <div className="space-y-2">
-              <h3 className="text-white text-lg font-semibold">Schedule</h3>
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button className="w-full bg-[#3a1996] text-white hover:bg-[#4c22c0]">
-                    <Calendar className="h-4 w-4 mr-2" /> Schedule Stream
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="bg-[#0a152c] text-white">
-                  <DialogHeader>
-                    <DialogTitle>Schedule Stream</DialogTitle>
-                  </DialogHeader>
-                  <input
-                    type="datetime-local"
-                    onChange={(e) => setScheduledTime(new Date(e.target.value))}
-                    className="w-full p-2 bg-[#1a2641] rounded text-white"
-                  />
-                  <Button
-                    onClick={() => setScheduledTime(new Date())}
-                    className="mt-2 bg-[#ff4d00] text-white"
-                  >
-                    Schedule
-                  </Button>
-                </DialogContent>
-              </Dialog>
-            </div>
-            <div className="space-y-2">
               <h3 className="text-white text-lg font-semibold">Chat</h3>
-              <div className="bg-[#1a2641] p-2 rounded-md h-72 overflow-y-auto">
+              <div className="bg-black p-2 rounded-md h-96 overflow-y-auto">
                 {messages.map((message) => (
                   <div key={message.id} className="text-white mb-2">
                     <span className="font-bold">{message.user}:</span>{" "}

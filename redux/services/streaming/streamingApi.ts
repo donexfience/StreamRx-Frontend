@@ -33,6 +33,7 @@ interface Stream {
   createdAt: Date;
   updatedAt: Date;
   status: any;
+  createdBy: string;
 }
 
 interface EditStreamRequest {

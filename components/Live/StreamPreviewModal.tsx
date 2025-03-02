@@ -66,14 +66,8 @@ export const StreamPreviewModal: React.FC<StreamPreviewModalProps> = ({
   const { videoDevices, audioDevices } = useMediaDevices();
   const [editStream, { isLoading: isEditing }] = useEditStreamMutation();
 
-  const isScreenShareBroadcast = stream?.broadcastType === "ScreenShare";
+  const isScreenShareBroadcast = stream?.broadcastType === "Screen";
   const isWebcamBroadcast = stream?.broadcastType === "Webcam";
-
-  const isScheduled =
-    stream?.schedule?.dateTime &&
-    new Date(stream.schedule.dateTime) > new Date();
-
-  const waitingMembers = isScheduled ? Math.floor(Math.random() * 5) : 0;
 
   useEffect(() => {
     if (isWebcamBroadcast) {
@@ -106,39 +100,24 @@ export const StreamPreviewModal: React.FC<StreamPreviewModalProps> = ({
     visible: {
       opacity: 1,
       scale: 1,
-      transition: {
-        type: "spring",
-        stiffness: 300,
-        damping: 25,
-      },
+      transition: { type: "spring", stiffness: 300, damping: 25 },
     },
-    exit: {
-      opacity: 0,
-      scale: 0.9,
-      transition: { duration: 0.2 },
-    },
+    exit: { opacity: 0, scale: 0.9, transition: { duration: 0.2 } },
   };
 
   const overlayVariants = {
     hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: { duration: 0.2 },
-    },
-    exit: {
-      opacity: 0,
-      transition: { duration: 0.2 },
-    },
+    visible: { opacity: 1, transition: { duration: 0.2 } },
+    exit: { opacity: 0, transition: { duration: 0.2 } },
   };
 
   const handleGoLive = async () => {
     try {
-      if (stream?.id) {
+      if (stream?._id) {
         await editStream({
-          id: stream.id,
+          id: stream._id,
           updateData: { status: "started" },
         }).unwrap();
-
         refetchStreams();
       }
     } catch (error) {
@@ -177,7 +156,7 @@ export const StreamPreviewModal: React.FC<StreamPreviewModalProps> = ({
         variants={overlayVariants}
       >
         <motion.div variants={modalVariants} className="w-full max-w-md">
-          <Card className="bg-zinc-900 border-zinc-800 text-white ">
+          <Card className="bg-zinc-900 border-zinc-800 text-white">
             <CardHeader>
               <CardTitle>Stream Preview</CardTitle>
               <CardDescription className="text-zinc-400">
@@ -291,22 +270,13 @@ export const StreamPreviewModal: React.FC<StreamPreviewModalProps> = ({
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div className="flex items-center gap-2 text-zinc-400">
                     <Users className="h-4 w-4" />
-                    <span>Waiting: {waitingMembers}</span>
+                    <span>Waiting: 0</span>
                   </div>
                   <div className="flex items-center gap-2 text-zinc-400">
                     <ThumbsUp className="h-4 w-4" />
                     <span>Likes: 0</span>
                   </div>
                 </div>
-
-                {stream.schedule?.dateTime && (
-                  <div className="flex items-center gap-2 text-zinc-400 text-sm">
-                    <span>Scheduled:</span>
-                    <span className="font-medium text-white">
-                      {format(new Date(stream.schedule.dateTime), "PPP 'at' p")}
-                    </span>
-                  </div>
-                )}
               </div>
 
               <Separator className="my-4 bg-zinc-800" />
@@ -406,7 +376,7 @@ export const StreamPreviewModal: React.FC<StreamPreviewModalProps> = ({
               }
             >
               <div className="flex items-center gap-2">
-                <div className="relative ">
+                <div className="relative">
                   <span className="absolute -top-1 -left-1 w-2 h-2 bg-white rounded-full animate-ping opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
                 </div>
