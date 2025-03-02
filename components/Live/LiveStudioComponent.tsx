@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import * as mediasoupClient from "mediasoup-client";
 import io from "socket.io-client";
+import { saveAs } from "file-saver";
 import {
   Camera,
   Mic,
@@ -39,6 +40,8 @@ import {
   Award,
   ImageIcon,
   Router,
+  Tablet,
+  Monitor as MonitorIcon,
 } from "lucide-react";
 import {
   Tooltip,
@@ -67,6 +70,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { uploadToCloudinary } from "@/app/lib/action/user";
 
 interface Scene {
   id: string;
@@ -74,6 +78,7 @@ interface Scene {
   isActive: boolean;
   type: "webcam" | "screen" | "media";
   mediaUrl?: string;
+  channelId?: string;
 }
 
 interface LiveStudioProps {
@@ -106,18 +111,44 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   const [isRecording, setIsRecording] = useState(false);
   const [selectedLayout, setSelectedLayout] = useState(1);
   const [scenes, setScenes] = useState<Scene[]>(() => {
-    const savedScenes = localStorage.getItem("scenes");
+    const savedScenes = localStorage.getItem(`scenes_${channelData?._id}`);
     return savedScenes
       ? JSON.parse(savedScenes)
       : [
-          { id: "1", name: "Webcam", isActive: true, type: "webcam" },
-          { id: "2", name: "Demo", isActive: false, type: "screen" },
+          {
+            id: "1",
+            name: "Webcam",
+            isActive: true,
+            type: "webcam",
+            channelId: channelData?._id,
+          },
+          {
+            id: "2",
+            name: "Demo",
+            isActive: false,
+            type: "screen",
+            channelId: channelData?._id,
+          },
+          {
+            id: "3",
+            name: "Pink Gradient 1",
+            isActive: false,
+            type: "media",
+            mediaUrl: "https://example.com/pink-gradient-1.jpg",
+            channelId: channelData?._id,
+          },
+          {
+            id: "4",
+            name: "Pink Gradient 2",
+            isActive: false,
+            type: "media",
+            mediaUrl: "https://example.com/pink-gradient-2.jpg",
+            channelId: channelData?._id,
+          },
         ];
   });
   const [isPro, setIsPro] = useState(false);
-  const [resolution, setResolution] = useState("720p");
   const [isScreenSharing, setIsScreenSharing] = useState(false);
-  const [mediaUrl, setMediaUrl] = useState<string>("");
   const [volume, setVolume] = useState(50);
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
   const [isHost, setIsHost] = useState(false);
@@ -125,6 +156,13 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   const [isMediaModalOpen, setIsMediaModalOpen] = useState(false);
   const [newMediaUrl, setNewMediaUrl] = useState("");
   const [isLive, setIsLive] = useState(false);
+  const [isMobileView, setIsMobileView] = useState(false);
+
+
+  const [isMirrored, setIsMirrored] = useState(false);
+  const [quality, setQuality] = useState("720p");
+  const [scheduledTime, setScheduledTime] = useState<Date | null>(null);
+  const [isRecordingActive, setIsRecordingActive] = useState(false);
 
   const [device, setDevice] = useState<mediasoupClient.Device | null>(null);
   const [producerTransport, setProducerTransport] =
@@ -154,6 +192,18 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
       message: "Looking forward to this!",
       time: "12:53",
     },
+    {
+      id: 4,
+      user: "Viewer4",
+      message: "Looking forward to this!",
+      time: "12:53",
+    },
+    {
+      id: 5,
+      user: "Viewer5",
+      message: "Looking forward to this!",
+      time: "12:53",
+    },
   ]);
   const [newMessage, setNewMessage] = useState("");
   const [userInitials, setUserInitials] = useState("DF");
@@ -165,8 +215,21 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     currentStream?.schedule?.dateTime?.toLocaleString() ||
     new Date().toLocaleString();
   const roomId = channelData?._id || "default-room";
+  const channelId = channelData?._id;
 
-  const participants = [user?.username || "Donex fdz", "Viewer1", "Viewer2"];
+  const qualityOptions = [
+    { label: "480p", constraints: { width: 854, height: 480 } },
+    { label: "720p", constraints: { width: 1280, height: 720 } },
+    { label: "1080p", constraints: { width: 1920, height: 1080 } },
+  ];
+
+  const participants = [
+    user?.username || "Donex fdz",
+    "Viewer1",
+    "Viewer2",
+    "viewer3",
+    "viewer4",
+  ];
   const isSingleParticipant = participants.length === 1;
 
   useEffect(() => {
@@ -223,10 +286,23 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
       }
     }
 
+    const checkSchedule = () => {
+      if (scheduledTime && !isLive) {
+        const now = new Date();
+        if (now >= scheduledTime) {
+          toggleLive();
+          setScheduledTime(null);
+        }
+      }
+    };
+
+    const scheduleInterval = setInterval(checkSchedule, 1000);
+
     return () => {
+      clearInterval(scheduleInterval);
       cleanupStream();
     };
-  }, [user?.username, user?._id, currentStream]);
+  }, [user?.username, user?._id, currentStream, scheduledTime, isLive]);
 
   useEffect(() => {
     if (device && deviceInitialized && isCameraOn) {
@@ -235,8 +311,8 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   }, [device, deviceInitialized, isCameraOn]);
 
   useEffect(() => {
-    localStorage.setItem("scenes", JSON.stringify(scenes));
-  }, [scenes]);
+    localStorage.setItem(`scenes_${channelId}`, JSON.stringify(scenes));
+  }, [scenes, channelId]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -251,16 +327,18 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     if (!device || !socket.current) return;
 
     try {
-      const constraints = {
-        video: isCameraOn, // Only request video if camera is on
-        audio: true, // Always request audio
-      };
-
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      const selectedQuality = qualityOptions.find((q) => q.label === quality);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: selectedQuality?.constraints || true,
+        audio: true,
+      });
 
       if (webcamVideoRef.current) {
         webcamVideoRef.current.srcObject = stream;
         webcamVideoRef.current.muted = isMuted;
+        webcamVideoRef.current.style.transform = isMirrored
+          ? "scaleX(-1)"
+          : "scaleX(1)";
         try {
           await webcamVideoRef.current.play();
         } catch (err) {
@@ -288,6 +366,44 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
       console.error("Error starting webcam stream:", err);
       setIsCameraOn(false);
     }
+  };
+
+  const changeQuality = async (newQuality: string) => {
+    setQuality(newQuality);
+    if (isCameraOn && device) {
+      const selectedQuality = qualityOptions.find(
+        (q) => q.label === newQuality
+      );
+      await restartWebcamStream(selectedQuality?.constraints);
+    }
+  };
+
+  const restartWebcamStream = async (constraints?: {
+    width: number;
+    height: number;
+  }) => {
+    if (videoProducer) {
+      videoProducer.close();
+      setVideoProducer(null);
+    }
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: constraints || true,
+      audio: true,
+    });
+
+    if (webcamVideoRef.current) {
+      webcamVideoRef.current.srcObject = stream;
+      webcamVideoRef.current.style.transform = isMirrored
+        ? "scaleX(-1)"
+        : "scaleX(1)";
+    }
+
+    const transport: any =
+      producerTransport || (await createProducerTransport());
+    const videoTrack = stream.getVideoTracks()[0];
+    const newVideoProducer = await transport.produce({ track: videoTrack });
+    setVideoProducer(newVideoProducer);
   };
 
   const createProducerTransport = async () => {
@@ -318,6 +434,51 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
         }
       );
     });
+  };
+
+  const startRecording = async () => {
+    if (!webcamVideoRef.current?.srcObject) return;
+
+    const stream = webcamVideoRef.current.srcObject as MediaStream;
+    const mediaRecorder = new MediaRecorder(stream, {
+      mimeType: "video/webm;codecs=vp9",
+    });
+
+    const recordedChunks: Blob[] = [];
+
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        recordedChunks.push(event.data);
+      }
+    };
+
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(recordedChunks, { type: "video/webm" });
+      saveAs(blob, `recording-${new Date().toISOString()}.webm`);
+    };
+
+    mediaRecorder.start();
+    setIsRecordingActive(true);
+    socket.current?.emit("startRecording", { roomId });
+
+    return () => {
+      mediaRecorder.stop();
+      setIsRecordingActive(false);
+      socket.current?.emit("stopRecording", { roomId });
+    };
+  };
+
+  const toggleRecording = () => {
+    if (!isRecording) {
+      const stopRecording = startRecording();
+      setIsRecording(true);
+      setTimeout(() => {
+        stopRecording && stopRecording();
+        setIsRecording(false);
+      }, 60000); // Stop after 1 minute
+    } else {
+      setIsRecording(false);
+    }
   };
 
   const toggleFullScreen = () => {
@@ -370,30 +531,46 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
         webcamVideoRef.current!.srcObject = null;
       }
     } else {
-      await startWebcamStream();
+      const selectedQuality = qualityOptions.find((q) => q.label === quality);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: selectedQuality?.constraints || true,
+        audio: true,
+      });
+
+      if (webcamVideoRef.current) {
+        webcamVideoRef.current.srcObject = stream;
+        webcamVideoRef.current.style.transform = isMirrored
+          ? "scaleX(-1)"
+          : "scaleX(1)";
+      }
     }
   };
 
-  const toggleRecording = () => {
-    setIsRecording(!isRecording);
-  };
-
-  const handleAddMediaScene = () => {
-    setIsMediaModalOpen(true);
-  };
-
-  const saveMediaScene = () => {
-    if (!newMediaUrl) return;
-    const newScene: Scene = {
-      id: (scenes.length + 1).toString(),
-      name: `Media Scene ${scenes.length + 1}`,
-      isActive: false,
-      type: "media",
-      mediaUrl: newMediaUrl,
-    };
-    setScenes([...scenes, newScene]);
-    setNewMediaUrl("");
-    setIsMediaModalOpen(false);
+  const handleAddMediaScene = async (
+    event: React.FormEvent<HTMLFormElement>
+  ) => {
+    event.preventDefault();
+    const fileInput = event.currentTarget.querySelector(
+      'input[type="file"]'
+    ) as HTMLInputElement;
+    if (fileInput?.files?.length) {
+      const file = fileInput.files[0];
+      try {
+        const mediaUrl = await uploadToCloudinary(file);
+        const newScene: Scene = {
+          id: (scenes.length + 1).toString(),
+          name: `Media Scene ${scenes.length + 1}`,
+          isActive: false,
+          type: "media",
+          mediaUrl,
+          channelId,
+        };
+        setScenes([...scenes, newScene]);
+        setIsMediaModalOpen(false);
+      } catch (error) {
+        console.error("Failed to upload media:", error);
+      }
+    }
   };
 
   const selectScene = (id: string) => {
@@ -407,14 +584,12 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
       setIsScreenSharing(true);
       setTimeout(async () => {
         try {
-          const screenStream = await navigator.mediaDevices.getDisplayMedia({
-            video: true,
-          });
-          console.log("Screen stream captured:", screenStream);
+          const screenStream: any =
+            await navigator.mediaDevices.getDisplayMedia({
+              video: true,
+            });
           if (screenVideoRef.current) {
-            console.log("Screen video ref exists:", screenVideoRef.current);
             screenVideoRef.current.srcObject = screenStream;
-            console.log(screenVideoRef.current.srcObject, "src object");
             try {
               await screenVideoRef.current.play();
             } catch (err) {
@@ -426,8 +601,6 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
               setScreenProducer(null);
               screenVideoRef.current!.srcObject = null;
             };
-          } else {
-            console.error("screenVideoRef.current is null!");
           }
 
           const transport: any =
@@ -455,6 +628,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
       setIsScreenSharing(false);
     }
   };
+
   const handleVolumeChange = (value: number[]) => {
     setVolume(value[0]);
     if (webcamVideoRef.current) webcamVideoRef.current.volume = value[0] / 100;
@@ -587,21 +761,23 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     return "U";
   };
 
-  console.log(
-    screenVideoRef,
-    "screen ref ,",
-    isScreenSharing,
-    "isssssssssssssss"
-  );
+  const toggleView = () => {
+    setIsMobileView(!isMobileView);
+  };
+
   return (
     <motion.div
-      className="flex flex-col h-screen bg-[#0a152c]"
+      className={`flex flex-col w-full h-screen ${
+        isMobileView ? "flex-row" : "flex-col"
+      } bg-[#0a152c]`}
       ref={studioRef}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.5 }}
     >
-      <div className="flex items-center justify-between px-4 py-2 bg-[#0a152c] border-b border-[#1a2641]">
+      <div
+        className={`flex items-center justify-between px-4 py-2 bg-[#0a152c] border-b border-[#1a2641] w-full`}
+      >
         <motion.div
           initial={{ x: -20 }}
           animate={{ x: 0 }}
@@ -638,20 +814,6 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
             </Label>
           </div>
           <Button
-            variant="outline"
-            size="sm"
-            className="text-white border-[#1a2641]"
-          >
-            <Plus className="h-4 w-4 mr-1" /> Channels
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="text-white border-[#1a2641]"
-          >
-            <Calendar className="h-4 w-4 mr-1" /> Schedule
-          </Button>
-          <Button
             variant="default"
             size="sm"
             className="bg-[#ff4d00] hover:bg-[#ff6b2c] text-white border-none"
@@ -662,11 +824,17 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
         </motion.div>
       </div>
 
-      <div className="flex flex-grow">
+      <div
+        className={`flex flex-grow w-full h-full ${
+          isMobileView ? "flex-col" : "flex-row"
+        }`}
+      >
         <motion.div
-          className="w-42 bg-[#0a152c] border-r border-[#1a2641] p-2"
+          className={`bg-[#0a152c] border-r border-[#1a2641] p-2 ${
+            isMobileView ? "w-[34%] h-auto" : "w-64 h-full"
+          }`}
           initial={{ width: 0 }}
-          animate={{ width: 168 }}
+          animate={{ width: isMobileView ? "100%" : 256 }}
           transition={{ duration: 0.3 }}
         >
           <Dialog open={isMediaModalOpen} onOpenChange={setIsMediaModalOpen}>
@@ -674,28 +842,32 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
               <Button
                 variant="outline"
                 size="sm"
-                className="w-full justify-start mb-3 text-white border-[#1a2641] hover:bg-[#1a2641]"
-                onClick={handleAddMediaScene}
+                className="w-full justify-center mb-3 text-black border-[#1a2641] hover:bg-[#1a2641]"
+                onClick={() => setIsMediaModalOpen(true)}
               >
                 <Plus className="h-4 w-4 mr-2" /> Add Media Scene
               </Button>
             </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add Media Scene</DialogTitle>
+            <DialogContent className="bg-black">
+              <DialogHeader className="">
+                <DialogTitle className="text-white">
+                  Add Media Scene
+                </DialogTitle>
               </DialogHeader>
-              <div className="space-y-4">
+              <form onSubmit={handleAddMediaScene} className="space-y-4">
                 <Input
-                  placeholder="Enter image URL"
-                  value={newMediaUrl}
-                  onChange={(e) => setNewMediaUrl(e.target.value)}
+                  type="file"
+                  accept="image/*,video/*"
+                  onChange={(e) =>
+                    e.target.files && setNewMediaUrl(e.target.files[0].name)
+                  }
                 />
-                <Button onClick={saveMediaScene}>Save Scene</Button>
-              </div>
+                <Button type="submit">Upload Scene</Button>
+              </form>
             </DialogContent>
           </Dialog>
 
-          <div className="space-y-2">
+          <div className="space-y-2 h-full overflow-y-auto">
             {scenes.map((scene) => (
               <motion.div
                 key={scene.id}
@@ -716,7 +888,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                     {scene.type === "screen" && (
                       <Monitor className="h-5 w-5 text-white" />
                     )}
-                    {scene.type === "media" && (
+                    {scene.type === "media" && scene.mediaUrl && (
                       <ImageIcon className="h-5 w-5 text-white" />
                     )}
                   </div>
@@ -727,36 +899,46 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
           </div>
         </motion.div>
 
-        <div className="flex-grow flex flex-col bg-[#0a152c] ml-5">
+        <div
+          className={`flex-grow flex flex-col bg-[#0a152c] ${
+            isMobileView ? "ml-0 h-full" : "ml-5 h-full"
+          }`}
+        >
           <div className="p-2 flex items-center">
-            <span className="text-white text-sm mr-2">{resolution}</span>
+            <span className="text-white text-sm mr-2">
+              Resolution: {quality}
+            </span>
           </div>
 
-          <div className="flex-grow flex justify-center relative">
+          <div className="flex-grow flex justify-center relative h-full">
             <div
-              className="absolute inset-0 bg-cover bg-center"
+              className="absolute inset-0 bg-cover bg-center z-0"
               style={{
                 backgroundImage:
                   scenes.find((s) => s.isActive)?.type === "media" &&
                   scenes.find((s) => s.isActive)?.mediaUrl
                     ? `url(${scenes.find((s) => s.isActive)?.mediaUrl})`
-                    : "none",
+                    : "linear-gradient(to bottom right, #ff416c, #ff4b2b)",
+                backgroundSize: "cover",
+                backgroundPosition: "center",
               }}
             />
 
             <motion.div
               className={`relative w-full max-w-4xl h-full flex items-center justify-center ${
                 isSingleParticipant ? "" : layouts[selectedLayout - 1].className
-              } transition-all duration-300 ease-in-out`}
+              } transition-all duration-300 ease-in-out ${
+                isMobileView ? "max-w-full" : ""
+              }`}
               layout
             >
               {participants.map((participant, index) => (
                 <motion.div
                   key={index}
-                  className={`rounded-md overflow-hidden relative bg-black ${getParticipantPosition(
+                  className={`rounded-md overflow-hidden relative w-full bg-black ${getParticipantPosition(
                     participant,
                     participants.length
-                  )}`}
+                  )} h-full z-10`}
                   layout
                   transition={{ duration: 0.3 }}
                 >
@@ -795,6 +977,11 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                               playsInline
                               muted={isMuted}
                               className="w-full h-full object-cover"
+                              style={{
+                                transform: isMirrored
+                                  ? "scaleX(-1)"
+                                  : "scaleX(1)",
+                              }}
                             />
                           </motion.div>
                         ) : (
@@ -806,7 +993,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                             exit={{ opacity: 0 }}
                             transition={{ duration: 0.3 }}
                           >
-                            <div className="w-24 h-24 rounded-full bg-gray-700 flex items-center justify-center">
+                            <div className="w-24 h-24 rounded-full bg-blue-700 flex items-center justify-center">
                               <span className="text-4xl font-bold text-white">
                                 {userInitials}
                               </span>
@@ -817,7 +1004,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
 
                       {isScreenSharing && isCameraOn && (
                         <motion.div
-                          className="absolute top-2 right-2 w-32 h-24 rounded-md overflow-hidden bg-black z-10"
+                          className="absolute top-2 right-2 w-32 h-24 rounded-md overflow-hidden bg-black z-20"
                           initial={{ x: 100, opacity: 0 }}
                           animate={{ x: 0, opacity: 1 }}
                           exit={{ x: 100, opacity: 0 }}
@@ -829,12 +1016,17 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                             playsInline
                             muted={isMuted}
                             className="w-full h-full object-cover"
+                            style={{
+                              transform: isMirrored
+                                ? "scaleX(-1)"
+                                : "scaleX(1)",
+                            }}
                           />
                         </motion.div>
                       )}
                     </>
                   )}
-                  <div className="absolute bottom-0 left-0 right-0 p-2 bg-[#0a152c40]">
+                  <div className="absolute bottom-0 left-0 right-0 p-2 bg-[#0a152c40] z-10">
                     <span className="text-white text-sm">{participant}</span>
                     {isHost && participant === user?.username && (
                       <Badge className="ml-2 bg-green-500 text-xs">Host</Badge>
@@ -844,7 +1036,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
               ))}
 
               <motion.div
-                className="absolute top-2 right-2 flex flex-col gap-1"
+                className="absolute top-2 right-2 flex flex-col gap-1 z-10"
                 initial={{ y: -20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ duration: 0.3 }}
@@ -870,18 +1062,70 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                       <Maximize2 className="h-4 w-4" />
                     )}
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 p-1 text-white bg-black/40 rounded-full"
-                  >
-                    <MoreVertical className="h-4 w-4" />
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-1 text-white bg-black/40 rounded-full"
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="bg-[#0a152c] border-[#1a2641] text-white">
+                      <DropdownMenuItem
+                        onClick={() => setIsMirrored(!isMirrored)}
+                      >
+                        <Camera className="mr-2 h-4 w-4" />
+                        {isMirrored ? "Unmirror Camera" : "Mirror Camera"}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <div className="flex items-center">
+                              <Calendar className="mr-2 h-4 w-4" />
+                              Schedule Stream
+                            </div>
+                          </DialogTrigger>
+                          <DialogContent className="bg-[#0a152c] text-white">
+                            <DialogHeader>
+                              <DialogTitle>Schedule Stream</DialogTitle>
+                            </DialogHeader>
+                            <input
+                              type="datetime-local"
+                              onChange={(e) =>
+                                setScheduledTime(new Date(e.target.value))
+                              }
+                              className="w-full p-2 bg-[#1a2641] rounded text-white"
+                            />
+                          </DialogContent>
+                        </Dialog>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger className="flex items-center">
+                            <Settings className="mr-2 h-4 w-4" />
+                            Quality
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent className="bg-[#0a152c] border-[#1a2641] text-white">
+                            {qualityOptions.map((option) => (
+                              <DropdownMenuItem
+                                key={option.label}
+                                onClick={() => changeQuality(option.label)}
+                              >
+                                {option.label}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
                 <AnimatePresence>
                   {showVolumeSlider && (
                     <motion.div
-                      className="bg-black/60 p-2 rounded-md w-32"
+                      className="bg-black/60 p-2 rounded-md w-32 z-10"
                       initial={{ opacity: 0, y: -10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
@@ -904,7 +1148,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
               </motion.div>
 
               <motion.div
-                className="absolute bottom-20 left-1/2 transform -translate-x-1/2"
+                className="absolute bottom-20 left-1/2 transform -translate-x-1/2 z-10"
                 initial={{ y: 20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ duration: 0.3 }}
@@ -932,7 +1176,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
               </motion.div>
 
               <motion.div
-                className="absolute bottom-4 left-1/2 transform -translate-x-1/2"
+                className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-10"
                 initial={{ y: 20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ duration: 0.3 }}
@@ -1069,7 +1313,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
             </motion.div>
 
             <motion.div
-              className="absolute top-4 right-4"
+              className="absolute top-4 right-4 z-10"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.5, duration: 0.3 }}
@@ -1084,7 +1328,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
           </div>
 
           <motion.div
-            className="px-4 py-2 bg-[#0a152c] border-t border-[#1a2641] flex justify-between items-center"
+            className="px-4 py-2 bg-[#0a152c] border-t border-[#1a2641] flex justify-between items-center w-full z-10"
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ duration: 0.3 }}
@@ -1092,24 +1336,40 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
             <Button
               variant="outline"
               size="sm"
-              className="text-white border-[#1a2641] hover:bg-[#1a2641]"
+              className="text-black border-[#1a2641] hover:bg-[#1a2641]"
             >
               <MessageCircle className="h-4 w-4 mr-1" />
               Private Chat
             </Button>
 
-            <div className="flex">
-              <Button variant="ghost" size="sm" className="text-white">
+            <div className="flex gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className={`text-white ${!isMobileView ? "bg-[#1a2641]" : ""}`}
+                onClick={toggleView}
+              >
                 <Monitor className="h-4 w-4 mr-1" />
+                {!isMobileView && "Desktop"}
               </Button>
-              <Button variant="ghost" size="sm" className="text-white">
+              <Button
+                variant="ghost"
+                size="sm"
+                className={`text-white ${isMobileView ? "bg-[#1a2641]" : ""}`}
+                onClick={toggleView}
+              >
                 <User className="h-4 w-4 mr-1" />
+                {isMobileView && "Mobile"}
               </Button>
             </div>
           </motion.div>
         </div>
 
-        <div className="w-16 bg-[#0a152c] border-l border-[#1a2641] flex flex-col items-center py-4"></div>
+        <div
+          className={`w-16 bg-[#0a152c] border-l border-[#1a2641] flex flex-col items-center py-4 ${
+            isMobileView ? "w-full border-t h-auto" : "h-full"
+          }`}
+        ></div>
       </div>
     </motion.div>
   );
