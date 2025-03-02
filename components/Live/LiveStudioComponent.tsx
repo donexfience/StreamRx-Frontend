@@ -72,6 +72,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { uploadToCloudinary } from "@/app/lib/action/user";
 
+// Interface for captions
+interface Caption {
+  id: string;
+  text: string;
+  timestamp: Date;
+}
+
 interface Scene {
   id: string;
   name: string;
@@ -104,6 +111,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   user,
   channelData,
 }) => {
+  // Existing state variables
   const [isMuted, setIsMuted] = useState(true);
   const [isCameraOn, setIsCameraOn] = useState(false);
   const [showChat, setShowChat] = useState(true);
@@ -157,12 +165,33 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   const [newMediaUrl, setNewMediaUrl] = useState("");
   const [isLive, setIsLive] = useState(false);
   const [isMobileView, setIsMobileView] = useState(false);
-
-
   const [isMirrored, setIsMirrored] = useState(false);
   const [quality, setQuality] = useState("720p");
   const [scheduledTime, setScheduledTime] = useState<Date | null>(null);
   const [isRecordingActive, setIsRecordingActive] = useState(false);
+
+  // New state variables
+  const [messages, setMessages] = useState([
+    { id: 1, user: "Viewer1", message: "Great stream!", time: "12:51" },
+    {
+      id: 2,
+      user: "Viewer2",
+      message: "Can you explain that again?",
+      time: "12:52",
+    },
+    {
+      id: 3,
+      user: "Viewer3",
+      message: "Looking forward to this!",
+      time: "12:53",
+    },
+  ]);
+  const [newMessage, setNewMessage] = useState("");
+  const [userInitials, setUserInitials] = useState("DF");
+  const [isMusicPlaying, setIsMusicPlaying] = useState(false);
+  const [musicUrl, setMusicUrl] = useState<string | null>(null);
+
+  const [newCaption, setNewCaption] = useState("");
 
   const [device, setDevice] = useState<mediasoupClient.Device | null>(null);
   const [producerTransport, setProducerTransport] =
@@ -178,35 +207,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   const studioRef = useRef<HTMLDivElement>(null);
   const webcamVideoRef = useRef<HTMLVideoElement>(null);
   const screenVideoRef = useRef<HTMLVideoElement>(null);
-  const [messages, setMessages] = useState([
-    { id: 1, user: "Viewer1", message: "Great stream!", time: "12:51" },
-    {
-      id: 2,
-      user: "Viewer2",
-      message: "Can you explain that again?",
-      time: "12:52",
-    },
-    {
-      id: 3,
-      user: "Viewer3",
-      message: "Looking forward to this!",
-      time: "12:53",
-    },
-    {
-      id: 4,
-      user: "Viewer4",
-      message: "Looking forward to this!",
-      time: "12:53",
-    },
-    {
-      id: 5,
-      user: "Viewer5",
-      message: "Looking forward to this!",
-      time: "12:53",
-    },
-  ]);
-  const [newMessage, setNewMessage] = useState("");
-  const [userInitials, setUserInitials] = useState("DF");
+  const audioRef = useRef<HTMLAudioElement>(null);
 
   const currentStream: any = streams[0];
   const streamTitle = currentStream?.title || "Live Stream";
@@ -216,7 +217,10 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     new Date().toLocaleString();
   const roomId = channelData?._id || "default-room";
   const channelId = channelData?._id;
-
+  const [captions, setCaptions] = useState<Caption[]>(() => {
+    const savedCaptions = localStorage.getItem(`captions_${channelId}`);
+    return savedCaptions ? JSON.parse(savedCaptions) : [];
+  });
   const qualityOptions = [
     { label: "480p", constraints: { width: 854, height: 480 } },
     { label: "720p", constraints: { width: 1280, height: 720 } },
@@ -227,11 +231,12 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     user?.username || "Donex fdz",
     "Viewer1",
     "Viewer2",
-    "viewer3",
-    "viewer4",
+    "Viewer3",
+    "Viewer4",
   ];
   const isSingleParticipant = participants.length === 1;
 
+  // Existing useEffect hooks remain the same
   useEffect(() => {
     socket.current = io("https://localhost:3011", {
       transports: ["websocket", "polling"],
@@ -312,7 +317,8 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
 
   useEffect(() => {
     localStorage.setItem(`scenes_${channelId}`, JSON.stringify(scenes));
-  }, [scenes, channelId]);
+    localStorage.setItem(`captions_${channelId}`, JSON.stringify(captions));
+  }, [scenes, captions, channelId]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -633,6 +639,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     setVolume(value[0]);
     if (webcamVideoRef.current) webcamVideoRef.current.volume = value[0] / 100;
     if (screenVideoRef.current) screenVideoRef.current.volume = value[0] / 100;
+    if (audioRef.current) audioRef.current.volume = value[0] / 100; // Adjust music volume
   };
 
   const toggleVolumeSlider = () => {
@@ -678,6 +685,8 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     setIsScreenSharing(false);
     setIsCameraOn(false);
     setIsMuted(true);
+    setIsMusicPlaying(false); 
+    if (audioRef.current) audioRef.current.pause();
   };
 
   const sendMessage = (e: React.FormEvent) => {
@@ -685,7 +694,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     if (newMessage.trim()) {
       const message = {
         id: messages.length + 1,
-        user: "User",
+        user: user?.username || "User",
         message: newMessage,
         time: new Date().toLocaleTimeString("en-US", {
           hour: "2-digit",
@@ -696,6 +705,47 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
       socket.current?.emit("chatMessage", { roomId, message });
       setNewMessage("");
     }
+  };
+
+  const playMusic = async () => {
+    if (!musicUrl) {
+      // Use a sample music API (e.g., Free Music Archive or YouTube Data API)
+      // For simplicity, we'll use a sample URL
+      const sampleMusicUrl =
+        "https://www.mfiles.co.uk/mp3-downloads/gs-cd-track2.mp3";
+      setMusicUrl(sampleMusicUrl);
+      if (audioRef.current) {
+        audioRef.current.src = sampleMusicUrl;
+        audioRef.current.play();
+        setIsMusicPlaying(true);
+      }
+    } else if (audioRef.current) {
+      audioRef.current.play();
+      setIsMusicPlaying(true);
+    }
+  };
+
+  const stopMusic = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      setIsMusicPlaying(false);
+    }
+  };
+
+  const addCaption = () => {
+    if (newCaption.trim()) {
+      const caption: Caption = {
+        id: Date.now().toString(),
+        text: newCaption,
+        timestamp: new Date(),
+      };
+      setCaptions([...captions, caption]);
+      setNewCaption("");
+    }
+  };
+
+  const deleteCaption = (id: string) => {
+    setCaptions(captions.filter((caption) => caption.id !== id));
   };
 
   const layouts = [
@@ -849,7 +899,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
               </Button>
             </DialogTrigger>
             <DialogContent className="bg-black">
-              <DialogHeader className="">
+              <DialogHeader>
                 <DialogTitle className="text-white">
                   Add Media Scene
                 </DialogTitle>
@@ -1035,6 +1085,20 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                 </motion.div>
               ))}
 
+              <div className="absolute bottom-4 left-4 z-10">
+                {captions.map((caption) => (
+                  <motion.div
+                    key={caption.id}
+                    className="bg-black/70 text-white p-2 rounded-md mb-2"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                  >
+                    {caption.text}
+                  </motion.div>
+                ))}
+              </div>
+
               <motion.div
                 className="absolute top-2 right-2 flex flex-col gap-1 z-10"
                 initial={{ y: -20, opacity: 0 }}
@@ -1078,28 +1142,6 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                       >
                         <Camera className="mr-2 h-4 w-4" />
                         {isMirrored ? "Unmirror Camera" : "Mirror Camera"}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem>
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <div className="flex items-center">
-                              <Calendar className="mr-2 h-4 w-4" />
-                              Schedule Stream
-                            </div>
-                          </DialogTrigger>
-                          <DialogContent className="bg-[#0a152c] text-white">
-                            <DialogHeader>
-                              <DialogTitle>Schedule Stream</DialogTitle>
-                            </DialogHeader>
-                            <input
-                              type="datetime-local"
-                              onChange={(e) =>
-                                setScheduledTime(new Date(e.target.value))
-                              }
-                              className="w-full p-2 bg-[#1a2641] rounded text-white"
-                            />
-                          </DialogContent>
-                        </Dialog>
                       </DropdownMenuItem>
                       <DropdownMenuItem>
                         <DropdownMenu>
@@ -1365,12 +1407,121 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
           </motion.div>
         </div>
 
-        <div
-          className={`w-16 bg-[#0a152c] border-l border-[#1a2641] flex flex-col items-center py-4 ${
+        <motion.div
+          className={`w-64 bg-[#0a152c] border-l border-[#1a2641] flex flex-col items-center py-4 ${
             isMobileView ? "w-full border-t h-auto" : "h-full"
           }`}
-        ></div>
+          initial={{ width: 0 }}
+          animate={{ width: isMobileView ? "100%" : 256 }}
+          transition={{ duration: 0.3 }}
+        >
+          <div className="space-y-4 w-full px-2">
+            <div className="space-y-2">
+              <h3 className="text-white text-lg font-semibold">Music</h3>
+              <Button
+                onClick={playMusic}
+                className="w-full bg-[#3a1996] text-white hover:bg-[#4c22c0]"
+                disabled={isMusicPlaying}
+              >
+                <Play className="h-4 w-4 mr-2" /> Play Music
+              </Button>
+              <Button
+                onClick={stopMusic}
+                className="w-full bg-[#ff4d00] text-white hover:bg-[#ff6b2c]"
+                disabled={!isMusicPlaying}
+              >
+                <X className="h-4 w-4 mr-2" /> Stop Music
+              </Button>
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-white text-lg font-semibold">Captions</h3>
+              <Input
+                value={newCaption}
+                onChange={(e) => setNewCaption(e.target.value)}
+                placeholder="Add caption..."
+                className="bg-[#1a2641] text-white border-[#1a2641]"
+              />
+              <Button
+                onClick={addCaption}
+                className="w-full bg-[#3a1996] text-white hover:bg-[#4c22c0]"
+              >
+                <Plus className="h-4 w-4 mr-2" /> Add Caption
+              </Button>
+              <div className="bg-[#1a2641] p-2 rounded-md max-h-24 overflow-y-auto">
+                {captions.map((caption) => (
+                  <div
+                    key={caption.id}
+                    className="text-white flex justify-between items-center mb-1"
+                  >
+                    {caption.text}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => deleteCaption(caption.id)}
+                      className="text-red-500 hover:text-red-700"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-white text-lg font-semibold">Schedule</h3>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button className="w-full bg-[#3a1996] text-white hover:bg-[#4c22c0]">
+                    <Calendar className="h-4 w-4 mr-2" /> Schedule Stream
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="bg-[#0a152c] text-white">
+                  <DialogHeader>
+                    <DialogTitle>Schedule Stream</DialogTitle>
+                  </DialogHeader>
+                  <input
+                    type="datetime-local"
+                    onChange={(e) => setScheduledTime(new Date(e.target.value))}
+                    className="w-full p-2 bg-[#1a2641] rounded text-white"
+                  />
+                  <Button
+                    onClick={() => setScheduledTime(new Date())}
+                    className="mt-2 bg-[#ff4d00] text-white"
+                  >
+                    Schedule
+                  </Button>
+                </DialogContent>
+              </Dialog>
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-white text-lg font-semibold">Chat</h3>
+              <div className="bg-[#1a2641] p-2 rounded-md h-72 overflow-y-auto">
+                {messages.map((message) => (
+                  <div key={message.id} className="text-white mb-2">
+                    <span className="font-bold">{message.user}:</span>{" "}
+                    {message.message}{" "}
+                    <span className="text-gray-400">({message.time})</span>
+                  </div>
+                ))}
+              </div>
+              <form onSubmit={sendMessage} className="flex gap-2">
+                <Input
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  placeholder="Type a message..."
+                  className="bg-[#1a2641] text-white border-[#1a2641]"
+                />
+                <Button type="submit" className="bg-[#ff4d00] text-white">
+                  Send
+                </Button>
+              </form>
+            </div>
+          </div>
+        </motion.div>
       </div>
+
+      <audio ref={audioRef} />
     </motion.div>
   );
 };
