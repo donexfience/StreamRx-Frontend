@@ -71,6 +71,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { uploadToCloudinary } from "@/app/lib/action/user";
 import { uploadToS3 } from "@/app/lib/action/s3";
+import { useEditStreamMutation } from "@/redux/services/streaming/streamingApi";
+import { useRouter } from "next/navigation";
 
 interface Caption {
   id: string;
@@ -190,6 +192,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
       time: "12:53",
     },
   ]);
+  const router = useRouter();
   const [newMessage, setNewMessage] = useState("");
   const [userInitials, setUserInitials] = useState("DF");
   const [isMusicPlaying, setIsMusicPlaying] = useState(false);
@@ -198,6 +201,28 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [canGoLive, setCanGoLive] = useState(false);
+
+  //remote access refs and states
+  const [hasPointerAccess, setHasPointerAccess] = useState(false);
+  const [currentPointerGuest, setCurrentPointerGuest] = useState<string | null>(
+    null
+  );
+  const [pointerPosition, setPointerPosition] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [clickEffect, setClickEffect] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [pendingRequests, setPendingRequests] = useState<string[]>([]);
+
+  //refs for screen access
+  const mainVideoRef = useRef<HTMLVideoElement>(null);
+
+  //api
+
+  const [editStream] = useEditStreamMutation();
 
   // Refs
   const socket = useRef<any>(null);
@@ -230,18 +255,15 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     const savedCaptions = localStorage.getItem(`captions_${channelId}`);
     return savedCaptions ? JSON.parse(savedCaptions) : [];
   });
+  const [participants, setParticipants] = useState<string[]>([
+    user?.username || "Host",
+  ]);
   const qualityOptions = [
     { label: "480p", constraints: { width: 854, height: 480 } },
     { label: "720p", constraints: { width: 1280, height: 720 } },
     { label: "1080p", constraints: { width: 1920, height: 1080 } },
   ];
-  const participants = [
-    user?.username || "Donex fdz",
-    "Viewer1",
-    "Viewer2",
-    "Viewer3",
-    "Viewer4",
-  ];
+
   const isSingleParticipant = participants.length === 1;
 
   // Effects
@@ -284,6 +306,62 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     }
 
     setIsHost(role === "host" && user?._id === currentStream?.createdBy);
+
+    socket.current.on("guestAdded", ({ guestId }: { guestId: string }) => {
+      setParticipants((prev) => [...prev, `Guest_${guestId}`]);
+    });
+    socket.current.on("streamStarted", () => setIsLive(true));
+    socket.current.on("streamStopped", () => setIsLive(false));
+    socket.current.on("streamerLeft", () => setIsLive(false));
+    socket.current.on(
+      "requestPointerAccess",
+      ({ guestId }: { guestId: any }) => {
+        if (isHost) {
+          setPendingRequests((prev) => [
+            ...prev.filter((id) => id !== guestId),
+            guestId,
+          ]);
+        }
+      }
+    );
+
+    socket.current.on("grantPointerAccess", ({ guestId }: { guestId: any }) => {
+      if (guestId === user?._id) {
+        setHasPointerAccess(true);
+      }
+    });
+
+    socket.current.on(
+      "revokePointerAccess",
+      ({ guestId }: { guestId: any }) => {
+        if (guestId === user?._id) {
+          setHasPointerAccess(false);
+        }
+      }
+    );
+
+    socket.current.on(
+      "pointerAccessGranted",
+      ({ guestId }: { guestId: any }) => {
+        setCurrentPointerGuest(guestId);
+        if (guestId !== user?._id) {
+          setHasPointerAccess(false);
+        }
+      }
+    );
+
+    socket.current.on("pointerMove", ({ x, y }: { x: any; y: any }) => {
+      setPointerPosition({ x, y });
+    });
+
+    socket.current.on("pointerClick", ({ x, y }: { x: any; y: any }) => {
+      setClickEffect({ x, y });
+      setTimeout(() => setClickEffect(null), 1000); // Clear click effect after 1 second
+    });
+
+    socket.current.on("chatMessage", (message: any) => {
+      setMessages((prev) => [...prev, message]);
+    });
 
     const initMediaSoup = async () => {
       try {
@@ -347,6 +425,30 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, []);
 
+  useEffect(() => {
+    if (hasPointerAccess && mainVideoRef.current && isScreenSharing) {
+      const video = mainVideoRef.current;
+      const handleMouseMove = (event: MouseEvent) => {
+        const rect = video.getBoundingClientRect();
+        const x = (event.clientX - rect.left) / rect.width;
+        const y = (event.clientY - rect.top) / rect.height;
+        socket.current?.emit("pointerMove", { x, y });
+      };
+      const handleClick = (event: MouseEvent) => {
+        const rect = video.getBoundingClientRect();
+        const x = (event.clientX - rect.left) / rect.width;
+        const y = (event.clientY - rect.top) / rect.height;
+        socket.current?.emit("pointerClick", { x, y });
+      };
+      video.addEventListener("mousemove", handleMouseMove);
+      video.addEventListener("click", handleClick);
+      return () => {
+        video.removeEventListener("mousemove", handleMouseMove);
+        video.removeEventListener("click", handleClick);
+      };
+    }
+  }, [hasPointerAccess, isScreenSharing]);
+
   // Countdown logic for scheduled streams
   useEffect(() => {
     if (currentStream?.schedule?.dateTime && !isLive) {
@@ -379,7 +481,6 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     }
   }, [currentStream, isLive]);
 
-  // Functions
   const handleBeforeUnload = (e: BeforeUnloadEvent) => {
     if (isLive) {
       socket.current?.emit("streamerLeft", { roomId });
@@ -708,12 +809,20 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
 
   const toggleVolumeSlider = () => setShowVolumeSlider(!showVolumeSlider);
 
-  const toggleLive = () => {
+  const toggleLive = async () => {
     if (isLive) {
       cleanupStream();
       socket.current?.emit("stopStream", { roomId });
       setIsLive(false);
       setStreamerLeft(false);
+      try {
+        await editStream({
+          id: currentStream.id,
+          updateData: { status: "stopped" },
+        });
+      } catch (error) {
+        console.error("Failed to stop stream:", error);
+      }
     } else {
       socket.current?.emit("startStream", { roomId });
       setIsLive(true);
@@ -722,20 +831,16 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   };
 
   const cleanupStream = () => {
+    if (!isLive) return;
     const stopTracks = (stream: MediaStream | null) => {
       if (stream) stream.getTracks().forEach((track) => track.stop());
     };
     stopTracks(webcamVideoRef.current?.srcObject as MediaStream);
     stopTracks(screenVideoRef.current?.srcObject as MediaStream);
-    if (webcamVideoRef.current && screenVideoRef.current) {
-      webcamVideoRef.current.srcObject = null;
-      screenVideoRef.current.srcObject = null;
-    }
     videoProducer?.close();
     audioProducer?.close();
     screenProducer?.close();
     producerTransport?.close();
-    socket.current?.disconnect();
     setVideoProducer(null);
     setAudioProducer(null);
     setScreenProducer(null);
@@ -743,8 +848,6 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     setIsScreenSharing(false);
     setIsCameraOn(false);
     setIsMuted(true);
-    setIsMusicPlaying(false);
-    if (audioRef.current) audioRef.current.pause();
   };
 
   const sendMessage = (e: React.FormEvent) => {
@@ -947,7 +1050,12 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
           transition={{ duration: 0.3 }}
           className="flex items-center"
         >
-          <Button variant="ghost" size="sm" className="text-white">
+          <Button
+            onClick={() => router.replace("/dashboard/streamer/main")}
+            variant="ghost"
+            size="sm"
+            className="text-white"
+          >
             <ChevronLeft className="h-4 w-4 mr-2" />
             {streamTitle} - {streamStatus}, {streamDate}
             {isHost && <Badge className="ml-2 bg-green-500">Host</Badge>}
@@ -1517,6 +1625,35 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                           <TooltipContent>Settings</TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
+                      {role === "guest" && isScreenSharing && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <motion.div
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.9 }}
+                              >
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-10 w-10 p-0 rounded-full bg-[#0a152c] border-[#1a2641] text-white"
+                                  onClick={() =>
+                                    socket.current?.emit(
+                                      "requestPointerAccess",
+                                      { guestId: user?._id }
+                                    )
+                                  }
+                                >
+                                  <PenTool className="h-5 w-5" />
+                                </Button>
+                              </motion.div>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              Request Pointer Access
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
                     </div>
                   </motion.div>
                 </motion.div>
@@ -1535,6 +1672,66 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                 </div>
                 <span className="text-xl font-bold text-white">StremRx</span>
               </div>
+              {isHost && isScreenSharing && (
+                <>
+                  {pendingRequests.length > 0 && (
+                    <motion.div
+                      className="absolute bottom-16 left-4 bg-[#0a152c] p-2 rounded-md text-white"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.3 }}
+                    >
+                      <h3 className="text-sm font-semibold">
+                        Pointer Access Requests
+                      </h3>
+                      {pendingRequests.map((guestId) => (
+                        <div
+                          key={guestId}
+                          className="flex items-center gap-2 mt-1"
+                        >
+                          <span>{guestId}</span>
+                          <Button
+                            size="sm"
+                            className="bg-[#ff4d00] text-white"
+                            onClick={() => {
+                              socket.current?.emit("grantPointerAccess", {
+                                guestId,
+                              });
+                              socket.current?.emit("pointerAccessGranted", {
+                                guestId,
+                              });
+                              setPendingRequests((prev) =>
+                                prev.filter((id) => id !== guestId)
+                              );
+                              setCurrentPointerGuest(guestId);
+                            }}
+                          >
+                            Grant
+                          </Button>
+                        </div>
+                      ))}
+                    </motion.div>
+                  )}
+                  {currentPointerGuest && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-10 w-auto p-2 rounded-full bg-[#0a152c] border-[#1a2641] text-white"
+                      onClick={() => {
+                        socket.current?.emit("revokePointerAccess", {
+                          guestId: currentPointerGuest,
+                        });
+                        socket.current?.emit("pointerAccessGranted", {
+                          guestId: null,
+                        });
+                        setCurrentPointerGuest(null);
+                      }}
+                    >
+                      Revoke Pointer from {currentPointerGuest}
+                    </Button>
+                  )}
+                </>
+              )}
             </motion.div>
           </div>
 

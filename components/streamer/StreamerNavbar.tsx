@@ -50,7 +50,11 @@ export default function StreamerNavbar() {
       path: `/dashboard/streamer/main/community/`,
       label: "Temperature",
     },
-    { icon: <Timer size={20} />, path: "/timer", label: "Timer" },
+    {
+      icon: <Timer size={20} />,
+      path: "/dashboard/streamer/live",
+      label: "Timer",
+    },
     {
       icon: <Bell size={20} />,
       path: "/notifications",
