@@ -73,6 +73,8 @@ import { uploadToCloudinary } from "@/app/lib/action/user";
 import { uploadToS3 } from "@/app/lib/action/s3";
 import { useEditStreamMutation } from "@/redux/services/streaming/streamingApi";
 import { useRouter } from "next/navigation";
+import { ParticipantVideo } from "./ParticipantVideo";
+import toast from "react-hot-toast";
 
 interface Caption {
   id: string;
@@ -87,6 +89,11 @@ interface Scene {
   type: "webcam" | "screen" | "media";
   mediaUrl?: string;
   channelId?: string;
+}
+
+interface Participant {
+  userId: string;
+  name: string;
 }
 
 interface LiveStudioProps {
@@ -115,7 +122,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   channelData,
   role = "host",
 }) => {
-  const [isMuted, setIsMuted] = useState(true);
+  const [isMuted, setIsMuted] = useState(role === "guest" ? true : false);
   const [isCameraOn, setIsCameraOn] = useState(false);
   const [showChat, setShowChat] = useState(true);
   const [fullScreen, setFullScreen] = useState(false);
@@ -163,7 +170,6 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [volume, setVolume] = useState(50);
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
-  const [isHost, setIsHost] = useState(role === "host");
   const [deviceInitialized, setDeviceInitialized] = useState(false);
   const [isMediaModalOpen, setIsMediaModalOpen] = useState(false);
   const [newMediaUrl, setNewMediaUrl] = useState("");
@@ -201,28 +207,31 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [canGoLive, setCanGoLive] = useState(false);
+  const [showRemoveModal, setShowRemoveModal] = useState(false);
+  const [guestToRemove, setGuestToRemove] = useState<string | null>(null);
+  const [pendingApproval, setPendingApproval] = useState(false);
 
-  //remote access refs and states
-  const [hasPointerAccess, setHasPointerAccess] = useState(false);
-  const [currentPointerGuest, setCurrentPointerGuest] = useState<string | null>(
-    null
-  );
-  const [pointerPosition, setPointerPosition] = useState<{
-    x: number;
-    y: number;
-  } | null>(null);
-  const [clickEffect, setClickEffect] = useState<{
-    x: number;
-    y: number;
-  } | null>(null);
-  const [pendingRequests, setPendingRequests] = useState<string[]>([]);
+  const [isNameModalOpen, setIsNameModalOpen] = useState(false);
+  const [guestName, setGuestName] = useState<string | null>(null);
+  const [inputName, setInputName] = useState("");
+  const [guestToApprove, setGuestToApprove] = useState<any>(null);
+  const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
 
-  //refs for screen access
-  const mainVideoRef = useRef<HTMLVideoElement>(null);
+  // Participant and stream states
+  const [participants, setParticipants] = useState<Participant[]>([
+    { userId: user?._id, name: user?.username || "Host" },
+  ]);
+  const [participantStreams, setParticipantStreams] = useState<{
+    [userId: string]: MediaStream;
+  }>({});
 
-  //api
-
+  // API
   const [editStream] = useEditStreamMutation();
+
+  //to fix device initialization before starting the webcam stream
+  const [pendingProducers, setPendingProducers] = useState<
+    { producerId: string; userId: string }[]
+  >([]);
 
   // Refs
   const socket = useRef<any>(null);
@@ -234,6 +243,8 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   const stopRecordingRef = useRef<(() => void) | null>(null);
   const [device, setDevice] = useState<mediasoupClient.Device | null>(null);
   const [producerTransport, setProducerTransport] =
+    useState<mediasoupClient.types.Transport | null>(null);
+  const [consumerTransport, setConsumerTransport] =
     useState<mediasoupClient.types.Transport | null>(null);
   const [videoProducer, setVideoProducer] =
     useState<mediasoupClient.types.Producer | null>(null);
@@ -255,9 +266,6 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     const savedCaptions = localStorage.getItem(`captions_${channelId}`);
     return savedCaptions ? JSON.parse(savedCaptions) : [];
   });
-  const [participants, setParticipants] = useState<string[]>([
-    user?.username || "Host",
-  ]);
   const qualityOptions = [
     { label: "480p", constraints: { width: 854, height: 480 } },
     { label: "720p", constraints: { width: 1280, height: 720 } },
@@ -266,9 +274,16 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
 
   const isSingleParticipant = participants.length === 1;
 
+  useEffect(() => {
+    Object.values(participantVideoRefs.current).forEach((video) => {
+      if (video) video.volume = volume / 100;
+    });
+  }, [volume, participantStreams]);
+
   // Effects
   useEffect(() => {
     socket.current = io("https://localhost:3011", {
+      auth: { userId: user?._id },
       transports: ["websocket", "polling"],
       forceNew: true,
       reconnection: true,
@@ -277,110 +292,187 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
       timeout: 5000,
     });
 
-    socket.current.on("connect", () => console.log(`Socket connected`));
+    socket.current.on("connect", () => {
+      console.log(
+        role,
+        guestName,
+        "dssssssssssssssssssslfsdfklddddddddddddddd"
+      );
+      if (role === "guest" && !guestName) {
+        console.log("inside if");
+        setIsNameModalOpen(true);
+      } else if (role === "guest") {
+        socket.current.emit("requestJoin", {
+          roomId,
+          userId: user?._id || guestId,
+        });
+        setPendingApproval(true);
+      } else {
+        socket.current.emit(
+          "joinRoom",
+          { roomId, userId: user?._id },
+          (response: any) => {
+            if (response.success) initMediaSoup();
+          }
+        );
+      }
+    });
 
+    const handleChatMessage = (message: any) => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: prev.length + 1,
+          user: message.sender,
+          message: message.message,
+          time:
+            message.time ||
+            new Date().toLocaleTimeString("en-US", {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+        },
+      ]);
+    };
+
+    const handlePrivateMessage = ({
+      message,
+      from,
+      sender,
+    }: {
+      message: any;
+      from: any;
+      sender: string;
+    }) => {
+      setPrivateMessages((prev) => [
+        ...prev,
+        {
+          id: prev.length + 1,
+          user: sender,
+          message: message,
+          time: new Date().toLocaleTimeString("en-US", {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        },
+      ]);
+    };
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get("token");
-    if (token && role === "guest") {
-      socket.current.emit("verifyInvite", { token }, (response: any) => {
-        if (response.success) {
-          socket.current.emit(
-            "joinRoom",
-            { roomId: response.roomId, userId: "guest_" + Date.now() },
-            (res: any) => {
-              if (res.success) initMediaSoup();
-            }
-          );
-        } else {
-          console.error("Invalid invite token");
-        }
-      });
-    } else {
+    const guestId = urlParams.get("guestId");
+
+    if (role === "guest" && (isCameraOn || isScreenSharing)) {
+      const stream =
+        webcamVideoRef.current?.srcObject || screenVideoRef.current?.srcObject;
+      if (stream) {
+        setParticipantStreams((prev) => ({
+          ...prev,
+          [user?._id]: stream as MediaStream,
+        }));
+      }
+    }
+
+    socket.current.on("joinApproved", () => {
+      setPendingApproval(false);
       socket.current.emit(
         "joinRoom",
-        { roomId, userId: user?._id },
+        { roomId, userId: user?._id || guestId, guestId, guestName },
         (response: any) => {
           if (response.success) initMediaSoup();
         }
       );
-    }
+    });
 
-    setIsHost(role === "host" && user?._id === currentStream?.createdBy);
+    socket.current.on("joinDenied", ({ message }: { message: string }) => {
+      setPendingApproval(false);
+      toast.error(message || "Join request denied");
 
-    socket.current.on("guestAdded", ({ guestId }: { guestId: string }) => {
-      setParticipants((prev) => [...prev, `Guest_${guestId}`]);
+      router.push("/dashboard/streamer/main");
+    });
+    //guesting adding removing
+
+    socket.current.on(
+      "guestAdded",
+      ({ guestId, guestName }: { guestId: any; guestName: any }) => {
+        toast.success(
+          `${guestName} has joined the stream with guest ID ${guestId}`
+        );
+      }
+    );
+
+    //join request
+
+    socket.current.on(
+      "joinRequest",
+      ({ guestId, guestSocketId }: { guestId: any; guestSocketId: any }) => {
+        setGuestToApprove({ guestId, guestSocketId });
+        console.log("Join request received for guest:", guestId);
+        setIsApprovalModalOpen(true);
+      }
+    );
+
+    socket.current.on("guestRemoved", ({ guestId }: { guestId: any }) => {
+      setParticipants((prev) => prev.filter((p) => p.userId !== guestId));
+      setParticipantStreams((prev) => {
+        const newStreams = { ...prev };
+        delete newStreams[guestId];
+        return newStreams;
+      });
+      if (guestId === user?._id) {
+        cleanupStream();
+        socket.current.disconnect();
+        router.push("/dashboard/streamer/main");
+      }
+    });
+
+    socket.current.on("participantsUpdated", (updatedParticipants: any) => {
+      setParticipants(updatedParticipants);
+      setParticipantStreams((prev) => {
+        const newStreams = { ...prev };
+        Object.keys(newStreams).forEach((userId) => {
+          if (!updatedParticipants.some((p: any) => p.userId === userId)) {
+            delete newStreams[userId];
+          }
+        });
+        return newStreams;
+      });
+    });
+
+    socket.current.on("guestRemoved", ({ guestId }: { guestId: string }) => {
+      setParticipants((prev) => prev.filter((p) => p.userId !== guestId));
     });
     socket.current.on("streamStarted", () => setIsLive(true));
     socket.current.on("streamStopped", () => setIsLive(false));
-    socket.current.on("streamerLeft", () => setIsLive(false));
-    socket.current.on(
-      "requestPointerAccess",
-      ({ guestId }: { guestId: any }) => {
-        if (isHost) {
-          setPendingRequests((prev) => [
-            ...prev.filter((id) => id !== guestId),
-            guestId,
-          ]);
-        }
-      }
-    );
+    socket.current.on("streamerLeft", ({ hostId }: { hostId: any }) => {
+      setParticipants((prev) => prev.filter((p) => p.userId !== hostId));
+      setIsLive(false);
+      setStreamerLeft(true);
+    });
 
-    socket.current.on("grantPointerAccess", ({ guestId }: { guestId: any }) => {
-      if (guestId === user?._id) {
-        setHasPointerAccess(true);
-      }
+    socket.current.on("chatMessage", handleChatMessage);
+    socket.current.on("privateMessage", handlePrivateMessage);
+
+    socket.current.on("sceneChanged", ({ sceneId }: { sceneId: any }) => {
+      setScenes(
+        scenes.map((scene) => ({ ...scene, isActive: scene.id === sceneId }))
+      );
+    });
+
+    socket.current.on("captionAdded", ({ caption }: { caption: any }) => {
+      setCaptions((prev) => [...prev, caption]);
     });
 
     socket.current.on(
-      "revokePointerAccess",
-      ({ guestId }: { guestId: any }) => {
-        if (guestId === user?._id) {
-          setHasPointerAccess(false);
+      "newProducer",
+      async ({ producerId, userId }: { producerId: any; userId: any }) => {
+        if (userId === user?._id) return;
+        if (!deviceInitialized) {
+          setPendingProducers((prev) => [...prev, { producerId, userId }]);
+          return;
         }
+        consumeProducer(producerId, userId);
       }
     );
-
-    socket.current.on(
-      "pointerAccessGranted",
-      ({ guestId }: { guestId: any }) => {
-        setCurrentPointerGuest(guestId);
-        if (guestId !== user?._id) {
-          setHasPointerAccess(false);
-        }
-      }
-    );
-
-    socket.current.on("pointerMove", ({ x, y }: { x: any; y: any }) => {
-      setPointerPosition({ x, y });
-    });
-
-    socket.current.on("pointerClick", ({ x, y }: { x: any; y: any }) => {
-      setClickEffect({ x, y });
-      setTimeout(() => setClickEffect(null), 1000); // Clear click effect after 1 second
-    });
-
-    socket.current.on("chatMessage", (message: any) => {
-      setMessages((prev) => [...prev, message]);
-    });
-
-    const initMediaSoup = async () => {
-      try {
-        const mediasoupDevice = new mediasoupClient.Device();
-        socket.current?.emit(
-          "getRouterRtpCapabilities",
-          {},
-          async (
-            routerRtpCapabilities: mediasoupClient.types.RtpCapabilities
-          ) => {
-            await mediasoupDevice.load({ routerRtpCapabilities });
-            setDevice(mediasoupDevice);
-            setDeviceInitialized(true);
-          }
-        );
-      } catch (err) {
-        console.error("Error initializing MediaSoup:", err);
-      }
-    };
 
     if (user?.username) {
       const nameParts = user.username.split(" ");
@@ -398,24 +490,148 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
       }
     );
 
+    socket.current.on(
+      "existingProducers",
+      ({ producers }: { producers: any }) => {
+        producers.forEach(
+          ({ producerId, userId }: { producerId: any; userId: any }) => {
+            if (userId !== user?._id) {
+              if (!deviceInitialized) {
+                setPendingProducers((prev) => [
+                  ...prev,
+                  { producerId, userId },
+                ]);
+              } else {
+                consumeProducer(producerId, userId);
+              }
+            }
+          }
+        );
+      }
+    );
+
     window.addEventListener("beforeunload", handleBeforeUnload);
 
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
       socket.current.off("streamerLeft");
+      socket.current.off("newProducer");
+      socket.current.off("sceneChanged");
+      socket.current.off("captionAdded");
+      socket.current.off("chatMessage", handleChatMessage);
+      socket.current.off("privateMessage", handlePrivateMessage);
+      socket.current.off;
       if (isLive) cleanupStream();
     };
-  }, [user?.username, user?._id, currentStream, isLive, channelId, role]);
+  }, [
+    user?.username,
+    user?._id,
+    currentStream,
+    isLive,
+    channelId,
+    role,
+    guestName,
+  ]);
 
+  useEffect(() => {
+    if (deviceInitialized && pendingProducers.length > 0) {
+      pendingProducers.forEach(({ producerId, userId }) => {
+        consumeProducer(producerId, userId);
+      });
+      setPendingProducers([]);
+    }
+  }, [deviceInitialized, pendingProducers]);
+
+  //consuming producer helper
+
+  const consumeProducer = async (producerId: any, userId: any) => {
+    if (!device || !consumerTransport) {
+      console.error("Device or consumer transport not initialized");
+      return;
+    }
+    socket.current.emit(
+      "consume",
+      {
+        producerId,
+        rtpCapabilities: device.rtpCapabilities,
+        transportId: consumerTransport.id,
+        roomId,
+      },
+      async (params: any) => {
+        try {
+          const consumer = await consumerTransport.consume(params);
+          const stream = new MediaStream([consumer.track]);
+          setParticipantStreams((prev) => ({ ...prev, [userId]: stream }));
+          const videoElement = participantVideoRefs.current[userId];
+          if (videoElement) {
+            videoElement.srcObject = stream;
+            await videoElement.play();
+          }
+        } catch (err) {
+          console.error(`Error consuming producer ${producerId}:`, err);
+        }
+      }
+    );
+  };
+
+  const initMediaSoup = async () => {
+    try {
+      const mediasoupDevice = new mediasoupClient.Device();
+      socket.current?.emit(
+        "getRouterRtpCapabilities",
+        {},
+        async (
+          routerRtpCapabilities: mediasoupClient.types.RtpCapabilities
+        ) => {
+          if (!routerRtpCapabilities) {
+            console.error("Failed to get router RTP capabilities");
+            return;
+          }
+          await mediasoupDevice.load({ routerRtpCapabilities });
+          setDevice(mediasoupDevice);
+          setDeviceInitialized(true);
+          const transport: any = await createConsumerTransport(mediasoupDevice);
+          setConsumerTransport(transport);
+        }
+      );
+    } catch (err) {
+      console.error("Error initializing MediaSoup:", err);
+    }
+  };
+
+  const participantVideoRefs = useRef<{
+    [userId: string]: HTMLVideoElement | null;
+  }>({});
+
+  useEffect(() => {
+    Object.entries(participantStreams).forEach(([userId, stream]) => {
+      const videoElement = participantVideoRefs.current[userId];
+      if (videoElement && stream) {
+        console.log(stream, "stream coming");
+        videoElement.srcObject = stream;
+        videoElement
+          .play()
+          .catch((err) =>
+            console.error(`Error playing video for ${userId}:`, err)
+          );
+      } else if (!stream) {
+        console.warn(`No stream found for user ${userId}`);
+      } else if (!videoElement) {
+        console.warn(`No video element found for user ${userId}`);
+      }
+    });
+  }, [participantStreams]);
   useEffect(() => {
     if (device && deviceInitialized && isCameraOn) startWebcamStream();
   }, [device, deviceInitialized, isCameraOn]);
 
   useEffect(() => {
-    localStorage.setItem(`scenes_${channelId}`, JSON.stringify(scenes));
-    localStorage.setItem(`captions_${channelId}`, JSON.stringify(captions));
+    if (role === "host") {
+      localStorage.setItem(`scenes_${channelId}`, JSON.stringify(scenes));
+      localStorage.setItem(`captions_${channelId}`, JSON.stringify(captions));
+    }
     if (musicUrl) localStorage.setItem(`music_${channelId}`, musicUrl);
-  }, [scenes, captions, musicUrl, channelId]);
+  }, [scenes, captions, musicUrl, channelId, role]);
 
   useEffect(() => {
     const handleFullscreenChange = () =>
@@ -425,36 +641,12 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, []);
 
-  useEffect(() => {
-    if (hasPointerAccess && mainVideoRef.current && isScreenSharing) {
-      const video = mainVideoRef.current;
-      const handleMouseMove = (event: MouseEvent) => {
-        const rect = video.getBoundingClientRect();
-        const x = (event.clientX - rect.left) / rect.width;
-        const y = (event.clientY - rect.top) / rect.height;
-        socket.current?.emit("pointerMove", { x, y });
-      };
-      const handleClick = (event: MouseEvent) => {
-        const rect = video.getBoundingClientRect();
-        const x = (event.clientX - rect.left) / rect.width;
-        const y = (event.clientY - rect.top) / rect.height;
-        socket.current?.emit("pointerClick", { x, y });
-      };
-      video.addEventListener("mousemove", handleMouseMove);
-      video.addEventListener("click", handleClick);
-      return () => {
-        video.removeEventListener("mousemove", handleMouseMove);
-        video.removeEventListener("click", handleClick);
-      };
-    }
-  }, [hasPointerAccess, isScreenSharing]);
-
   // Countdown logic for scheduled streams
   useEffect(() => {
     if (currentStream?.schedule?.dateTime && !isLive) {
       const scheduleTime = new Date(currentStream.schedule.dateTime).getTime();
       const now = Date.now();
-      const timeDiff = (scheduleTime - now) / 1000; // in seconds
+      const timeDiff = (scheduleTime - now) / 1000;
 
       if (timeDiff > 0) {
         const countdownStart = Math.max(timeDiff - 10, 0);
@@ -482,31 +674,31 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   }, [currentStream, isLive]);
 
   const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-    if (isLive) {
+    if (isLive && role === "host") {
       socket.current?.emit("streamerLeft", { roomId });
       e.preventDefault();
       e.returnValue = "You are streaming. Are you sure you want to leave?";
     }
   };
+  const handleGuestExit = () => {
+    if (role !== "guest") return;
+    socket.current.emit("leaveRoom", { roomId, userId: user?._id });
+    cleanupStream();
+    socket.current.disconnect();
+    router.push("/dashboard/streamer/main");
+  };
 
   const startWebcamStream = async () => {
-    if (!device || !socket.current) return;
+    if (!device || !deviceInitialized || !socket.current) return;
     try {
-      const selectedQuality = qualityOptions.find((q) => q.label === quality);
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: selectedQuality?.constraints || true,
+        video: true,
         audio: true,
       });
-
       if (webcamVideoRef.current) {
         webcamVideoRef.current.srcObject = stream;
-        webcamVideoRef.current.muted = isMuted;
-        webcamVideoRef.current.style.transform = isMirrored
-          ? "scaleX(-1)"
-          : "scaleX(1)";
-        await webcamVideoRef.current
-          .play()
-          .catch((err) => console.error("Error playing webcam video:", err));
+        webcamVideoRef.current.muted = true;
+        await webcamVideoRef.current.play();
       }
 
       const transport: any =
@@ -515,19 +707,62 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
 
       const audioTrack = stream.getAudioTracks()[0];
       if (audioTrack) {
-        const audioProd = await transport.produce({ track: audioTrack });
+        const audioProd = await transport.produce({
+          track: audioTrack,
+          appData: { userId: user?._id },
+        });
         setAudioProducer(audioProd);
         audioTrack.enabled = !isMuted;
+        socket.current.emit("produce", {
+          transportId: transport.id,
+          kind: audioProd.kind,
+          rtpParameters: audioProd.rtpParameters,
+          roomId,
+        });
       }
 
-      if (isCameraOn && stream.getVideoTracks().length > 0) {
-        const videoTrack = stream.getVideoTracks()[0];
-        const videoProd = await transport.produce({ track: videoTrack });
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack && isCameraOn) {
+        const videoProd = await transport.produce({
+          track: videoTrack,
+          appData: { userId: user?._id },
+        });
         setVideoProducer(videoProd);
+        socket.current.emit("produce", {
+          transportId: transport.id,
+          kind: videoProd.kind,
+          rtpParameters: videoProd.rtpParameters,
+          roomId,
+        });
       }
+
+      setParticipantStreams((prev) => ({ ...prev, [user?._id]: stream }));
     } catch (err) {
       console.error("Error starting webcam stream:", err);
       setIsCameraOn(false);
+    }
+  };
+
+  const handleRemoveGuest = (guestId: string) => {
+    setGuestToRemove(guestId);
+    setShowRemoveModal(true);
+  };
+
+  const confirmRemoveGuest = () => {
+    if (guestToRemove && role === "host") {
+      socket.current.emit(
+        "removeGuest",
+        { roomId, guestId: guestToRemove },
+        (response: any) => {
+          if (response.success) {
+            setParticipants((prev) =>
+              prev.filter((p) => p.userId !== guestToRemove)
+            );
+          }
+        }
+      );
+      setShowRemoveModal(false);
+      setGuestToRemove(null);
     }
   };
 
@@ -595,6 +830,35 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     });
   };
 
+  const createConsumerTransport = async (device: mediasoupClient.Device) => {
+    return new Promise((resolve, reject) => {
+      socket.current.emit(
+        "createConsumerTransport",
+        {},
+        async (params: any) => {
+          if (!params || !params.id) {
+            console.error("Invalid transport params:", params);
+            reject(new Error("Missing or invalid transport parameters"));
+            return;
+          }
+          try {
+            const transport = device.createRecvTransport(params);
+            transport.on("connect", async ({ dtlsParameters }, callback) => {
+              socket.current.emit(
+                "connectConsumerTransport",
+                { transportId: transport.id, dtlsParameters, roomId },
+                callback
+              );
+            });
+            resolve(transport);
+          } catch (error) {
+            console.error("Error creating consumer transport:", error);
+            reject(error);
+          }
+        }
+      );
+    });
+  };
   const startRecording = async () => {
     const activeStream =
       webcamVideoRef.current?.srcObject || screenVideoRef.current?.srcObject;
@@ -668,19 +932,18 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     if (!fullScreen) studioRef.current?.requestFullscreen();
     else document.exitFullscreen();
   };
-
   const toggleMute = () => {
     const newMutedState = !isMuted;
     setIsMuted(newMutedState);
-    if (webcamVideoRef.current?.srcObject) {
+    if (audioProducer?.track) {
+      audioProducer.track.enabled = !newMutedState;
+    } else if (webcamVideoRef.current?.srcObject) {
       const stream = webcamVideoRef.current.srcObject as MediaStream;
       stream
         .getAudioTracks()
         .forEach((track) => (track.enabled = !newMutedState));
     }
-    if (audioProducer) audioProducer.enabled = !newMutedState;
   };
-
   const toggleCamera = async () => {
     const newCameraState = !isCameraOn;
     setIsCameraOn(newCameraState);
@@ -722,6 +985,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   const handleAddMediaScene = async (
     event: React.FormEvent<HTMLFormElement>
   ) => {
+    if (role !== "host") return;
     event.preventDefault();
     const fileInput = event.currentTarget.querySelector(
       'input[type="file"]'
@@ -747,7 +1011,9 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   };
 
   const selectScene = (id: string) => {
+    if (role !== "host") return;
     setScenes(scenes.map((scene) => ({ ...scene, isActive: scene.id === id })));
+    socket.current.emit("selectScene", { roomId, sceneId: id });
   };
 
   const toggleScreenShare = async () => {
@@ -758,7 +1024,10 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
       setTimeout(async () => {
         try {
           const screenStream: any =
-            await navigator.mediaDevices.getDisplayMedia({ video: true });
+            await navigator.mediaDevices.getDisplayMedia({
+              video: true,
+              audio: true,
+            });
           if (screenVideoRef.current) {
             screenVideoRef.current.srcObject = screenStream;
             await screenVideoRef.current
@@ -778,8 +1047,27 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
           const transport: any =
             producerTransport || (await createProducerTransport());
           const screenTrack = screenStream.getVideoTracks()[0];
-          const producer = await transport.produce({ track: screenTrack });
-          setScreenProducer(producer);
+          const screenAudioTrack = screenStream.getAudioTracks()[0];
+          const Videoproducer: any = await transport.produce({
+            track: screenTrack,
+          });
+          setScreenProducer(videoProducer);
+          if (screenAudioTrack) {
+            const audioProducer = await transport.produce({
+              track: screenAudioTrack,
+            });
+            setAudioProducer(audioProducer);
+            audioProducer.track.enabled = !isMuted;
+            socket.current.emit("newProducer", {
+              producerId: audioProducer.id,
+              userId: user?._id,
+            });
+          }
+          socket.current.emit("newProducer", {
+            producerId: videoProducer?.id,
+            userId: user?._id,
+          });
+
           if (!producerTransport) setProducerTransport(transport);
         } catch (err) {
           console.error("Error sharing screen:", err);
@@ -810,6 +1098,10 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   const toggleVolumeSlider = () => setShowVolumeSlider(!showVolumeSlider);
 
   const toggleLive = async () => {
+    if (role !== "host") {
+      console.log("Only the host can start or stop the stream.");
+      return;
+    }
     if (isLive) {
       cleanupStream();
       socket.current?.emit("stopStream", { roomId });
@@ -831,25 +1123,25 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   };
 
   const cleanupStream = () => {
-    if (!isLive) return;
-    const stopTracks = (stream: MediaStream | null) => {
-      if (stream) stream.getTracks().forEach((track) => track.stop());
-    };
+    const stopTracks = (stream: MediaStream | null) =>
+      stream?.getTracks().forEach((track) => track.stop());
     stopTracks(webcamVideoRef.current?.srcObject as MediaStream);
     stopTracks(screenVideoRef.current?.srcObject as MediaStream);
     videoProducer?.close();
     audioProducer?.close();
     screenProducer?.close();
     producerTransport?.close();
+    consumerTransport?.close();
     setVideoProducer(null);
     setAudioProducer(null);
     setScreenProducer(null);
     setProducerTransport(null);
+    setConsumerTransport(null);
     setIsScreenSharing(false);
     setIsCameraOn(false);
     setIsMuted(true);
+    setParticipantStreams({});
   };
-
   const sendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (newMessage.trim()) {
@@ -868,7 +1160,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     }
   };
 
-  const sendPrivateMessage = (e: React.FormEvent) => {
+  const sendPrivateMessage = (e: any, targetUserId: any) => {
     e.preventDefault();
     if (newPrivateMessage.trim()) {
       const message = {
@@ -885,6 +1177,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
         roomId,
         message,
         userId: user?._id,
+        targetUserId: role === "host" ? targetUserId : undefined,
       });
       setNewPrivateMessage("");
     }
@@ -919,6 +1212,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   };
 
   const addCaption = () => {
+    if (role !== "host") return;
     if (newCaption.trim()) {
       const caption: Caption = {
         id: Date.now().toString(),
@@ -927,11 +1221,14 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
       };
       setCaptions([...captions, caption]);
       setNewCaption("");
+      socket.current.emit("addCaption", { roomId, caption });
     }
   };
 
-  const deleteCaption = (id: string) =>
+  const deleteCaption = (id: string) => {
+    if (role !== "host") return;
     setCaptions(captions.filter((caption) => caption.id !== id));
+  };
 
   const layouts = [
     {
@@ -957,11 +1254,11 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   ];
 
   const getParticipantPosition = (
-    username: string,
+    userId: string,
     totalParticipants: number
   ) => {
     if (totalParticipants <= 1) return "w-full";
-    const index = participants.indexOf(username);
+    const index = participants.findIndex((p) => p.userId === userId);
     switch (selectedLayout) {
       case 1:
         return "w-full";
@@ -996,6 +1293,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   const toggleView = () => setIsMobileView(!isMobileView);
 
   const generateInviteLink = () => {
+    if (role !== "host") return;
     socket.current.emit(
       "generateInvite",
       { roomId, userId: user?._id },
@@ -1008,6 +1306,13 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
       }
     );
   };
+  if (pendingApproval) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-[#0a152c] text-white">
+        Waiting for host approval...
+      </div>
+    );
+  }
 
   // Render
   return (
@@ -1040,7 +1345,6 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
           </motion.div>
         </motion.div>
       )}
-
       <div
         className={`flex items-center justify-between px-4 py-2 bg-[#0a152c] border-b border-[#1a2641] w-full`}
       >
@@ -1058,7 +1362,9 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
           >
             <ChevronLeft className="h-4 w-4 mr-2" />
             {streamTitle} - {streamStatus}, {streamDate}
-            {isHost && <Badge className="ml-2 bg-green-500">Host</Badge>}
+            {role === "host" && (
+              <Badge className="ml-2 bg-green-500">Host</Badge>
+            )}
           </Button>
         </motion.div>
         <motion.div
@@ -1074,38 +1380,42 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
           >
             GO PRO
           </Button>
-          <div className="flex items-center gap-2 ml-4">
-            <Switch
-              id="recording"
-              checked={isRecording}
-              onCheckedChange={toggleRecording}
-              disabled={!isCameraOn && !isScreenSharing}
-            />
-            <Label htmlFor="recording" className="text-white">
-              Record
-            </Label>
-            <Switch
-              id="save-locally"
-              checked={saveLocally}
-              onCheckedChange={setSaveLocally}
-              disabled={isRecording}
-            />
-            <Label htmlFor="save-locally" className="text-white">
-              {saveLocally ? "Save Locally" : "Save to Cloud"}
-            </Label>
-          </div>
-          <Button
-            variant="default"
-            size="sm"
-            className="bg-[#ff4d00] hover:bg-[#ff6b2c] text-white border-none"
-            onClick={toggleLive}
-            disabled={!isLive && !canGoLive}
-          >
-            {isLive ? "Stop Live" : "Go Live"}
-          </Button>
+
+          {role === "host" && (
+            <div className="flex items-center gap-2 ml-4">
+              <Switch
+                id="recording"
+                checked={isRecording}
+                onCheckedChange={toggleRecording}
+                disabled={!isCameraOn && !isScreenSharing}
+              />
+              <Label htmlFor="recording" className="text-white">
+                Record
+              </Label>
+              <Switch
+                id="save-locally"
+                checked={saveLocally}
+                onCheckedChange={setSaveLocally}
+                disabled={isRecording}
+              />
+              <Label htmlFor="save-locally" className="text-white">
+                {saveLocally ? "Save Locally" : "Save to Cloud"}
+              </Label>
+            </div>
+          )}
+          {role === "host" && (
+            <Button
+              variant="default"
+              size="sm"
+              className="bg-[#ff4d00] hover:bg-[#ff6b2c] text-white border-none"
+              onClick={toggleLive}
+              disabled={!isLive && !canGoLive}
+            >
+              {isLive ? "Stop Live" : "Go Live"}
+            </Button>
+          )}
         </motion.div>
       </div>
-
       <div
         className={`flex flex-grow w-full h-full ${
           isMobileView ? "flex-col" : "flex-row"
@@ -1119,37 +1429,39 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
           animate={{ width: isMobileView ? "100%" : 256 }}
           transition={{ duration: 0.3 }}
         >
-          <Dialog open={isMediaModalOpen} onOpenChange={setIsMediaModalOpen}>
-            <DialogTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full justify-center mb-3 text-black border-[#1a2641] hover:bg-[#1a2641]"
-                onClick={() => setIsMediaModalOpen(true)}
-              >
-                <Plus className="h-4 w-4 mr-2" /> Add Media Scene
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="bg-black">
-              <DialogHeader>
-                <DialogTitle className="text-white">
-                  Add Media Scene
-                </DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleAddMediaScene} className="space-y-4">
-                <Input
-                  type="file"
-                  accept="image/*,video/*"
-                  onChange={(e) =>
-                    e.target.files && setNewMediaUrl(e.target.files[0].name)
-                  }
-                />
-                <Button type="submit">Upload Scene</Button>
-              </form>
-            </DialogContent>
-          </Dialog>
+          {role === "host" && (
+            <Dialog open={isMediaModalOpen} onOpenChange={setIsMediaModalOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-center mb-3 text-black border-[#1a2641] hover:bg-[#1a2641]"
+                  onClick={() => setIsMediaModalOpen(true)}
+                >
+                  <Plus className="h-4 w-4 mr-2" /> Add Media Scene
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="bg-black">
+                <DialogHeader>
+                  <DialogTitle className="text-white">
+                    Add Media Scene
+                  </DialogTitle>
+                </DialogHeader>
+                <form onSubmit={handleAddMediaScene} className="space-y-4">
+                  <Input
+                    type="file"
+                    accept="image/*,video/*"
+                    onChange={(e) =>
+                      e.target.files && setNewMediaUrl(e.target.files[0].name)
+                    }
+                  />
+                  <Button type="submit">Upload Scene</Button>
+                </form>
+              </DialogContent>
+            </Dialog>
+          )}
 
-          <div className="space-y-2 h-full overflow-y-auto">
+          <div className="space-y-2 h-full ">
             {scenes.map((scene) => (
               <motion.div
                 key={scene.id}
@@ -1178,6 +1490,82 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                 </div>
               </motion.div>
             ))}
+            <div className="w-64 bg-[#0a152c] border-l border-[#1a2641] p-4 flex flex-col items-start">
+              <h3 className="text-white text-lg font-semibold mb-4 flex items-center">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-6 w-6 mr-2"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+                  />
+                </svg>
+                Participants
+              </h3>
+
+              <div className="w-full">
+                {participants.map((p: any) => (
+                  <div
+                    key={p.userId}
+                    className="text-white mb-2 flex items-center p-2 rounded-lg hover:bg-[#1a2641] transition-colors"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-5 w-5 mr-2"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    <span>
+                      {p.name}{" "}
+                      <span className="text-sm text-gray-400">({p.role})</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {role === "host" && (
+                <Button
+                  onClick={generateInviteLink}
+                  className="mt-4 bg-[#ff4d00] text-white hover:bg-[#e64500] transition-colors flex items-center justify-center w-full py-2 rounded-lg"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-5 w-5 mr-2"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"
+                    />
+                  </svg>
+                  Invite Guest
+                </Button>
+              )}
+
+              {inviteLink && role === "host" && (
+                <div className="mt-4 text-white text-sm p-2 bg-[#1a2641] rounded-lg w-full">
+                  <span className="font-medium">Link:</span> {inviteLink}
+                </div>
+              )}
+            </div>
           </div>
         </motion.div>
 
@@ -1231,17 +1619,17 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                   }`}
                   layout
                 >
-                  {participants.map((participant, index) => (
+                  {participants.map((participant) => (
                     <motion.div
-                      key={index}
+                      key={participant.userId}
                       className={`rounded-md overflow-hidden relative w-full bg-black ${getParticipantPosition(
-                        participant,
+                        participant.userId,
                         participants.length
                       )} h-full z-10`}
                       layout
                       transition={{ duration: 0.3 }}
                     >
-                      {participant === user?.username && (
+                      {participant.userId === user?._id ? (
                         <>
                           <AnimatePresence>
                             {isScreenSharing ? (
@@ -1257,7 +1645,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                                   ref={screenVideoRef}
                                   autoPlay
                                   playsInline
-                                  muted={isMuted}
+                                  muted={true}
                                   className="w-full h-full object-cover"
                                 />
                               </motion.div>
@@ -1274,7 +1662,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                                   ref={webcamVideoRef}
                                   autoPlay
                                   playsInline
-                                  muted={isMuted}
+                                  muted={true}
                                   className="w-full h-full object-cover"
                                   style={{
                                     transform: isMirrored
@@ -1313,7 +1701,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                                 ref={webcamVideoRef}
                                 autoPlay
                                 playsInline
-                                muted={isMuted}
+                                muted={true}
                                 className="w-full h-full object-cover"
                                 style={{
                                   transform: isMirrored
@@ -1324,16 +1712,47 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                             </motion.div>
                           )}
                         </>
+                      ) : participantStreams[participant.userId] ? (
+                        <ParticipantVideo
+                          userId={participant.userId}
+                          stream={participantStreams[participant.userId]}
+                          ref={(el) => {
+                            participantVideoRefs.current[participant.userId] =
+                              el;
+                          }}
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-gray-800">
+                          <div className="w-24 h-24 rounded-full bg-blue-700 flex items-center justify-center">
+                            <span className="text-4xl font-bold text-white">
+                              {getInitials(participant.name)}
+                            </span>
+                          </div>
+                        </div>
                       )}
-                      <div className="absolute bottom-0 left-0 right-0 p-2 bg-[#0a152c40] z-10">
+                      <div className="absolute bottom-0 left-0 right-0 p-2 bg-[#0a152c40] z-10 flex justify-between items-center">
                         <span className="text-white text-sm">
-                          {participant}
+                          {participant.name}
                         </span>
-                        {isHost && participant === user?.username && (
-                          <Badge className="ml-2 bg-green-500 text-xs">
-                            Host
-                          </Badge>
-                        )}
+                        {role === "host" &&
+                          participant.userId !== user?._id && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-500"
+                              onClick={() =>
+                                handleRemoveGuest(participant.userId)
+                              }
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          )}
+                        {role === "host" &&
+                          participant.userId === user?._id && (
+                            <Badge className="ml-2 bg-green-500 text-xs">
+                              Host
+                            </Badge>
+                          )}
                       </div>
                     </motion.div>
                   ))}
@@ -1564,14 +1983,14 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                         </Tooltip>
                       </TooltipProvider>
 
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <motion.div
-                              whileHover={{ scale: 1.1 }}
-                              whileTap={{ scale: 0.9 }}
-                            >
-                              {isHost && (
+                      {role === "host" && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <motion.div
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.9 }}
+                              >
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -1580,30 +1999,34 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                                 >
                                   <Users className="h-5 w-5" />
                                 </Button>
-                              )}
-                            </motion.div>
-                          </TooltipTrigger>
-                          <TooltipContent>Invite Guest</TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
+                              </motion.div>
+                            </TooltipTrigger>
+                            <TooltipContent>Invite Guest</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
 
-                      {inviteLink && isHost && (
-                        <motion.div
-                          className="absolute top-16 right-4 bg-[#0a152c] p-2 rounded-md text-white"
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          transition={{ duration: 0.3 }}
-                        >
-                          <p>Invite Link: {inviteLink}</p>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setInviteLink(null)}
-                            className="text-red-500"
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </motion.div>
+                      {role === "guest" && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <motion.div
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.9 }}
+                              >
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-10 w-10 p-0 rounded-full bg-[#ff4d00] text-white"
+                                  onClick={handleGuestExit}
+                                >
+                                  <X className="h-5 w-5" />
+                                </Button>
+                              </motion.div>
+                            </TooltipTrigger>
+                            <TooltipContent>Exit Stream</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                       )}
 
                       <TooltipProvider>
@@ -1625,35 +2048,6 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                           <TooltipContent>Settings</TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
-                      {role === "guest" && isScreenSharing && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <motion.div
-                                whileHover={{ scale: 1.1 }}
-                                whileTap={{ scale: 0.9 }}
-                              >
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-10 w-10 p-0 rounded-full bg-[#0a152c] border-[#1a2641] text-white"
-                                  onClick={() =>
-                                    socket.current?.emit(
-                                      "requestPointerAccess",
-                                      { guestId: user?._id }
-                                    )
-                                  }
-                                >
-                                  <PenTool className="h-5 w-5" />
-                                </Button>
-                              </motion.div>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              Request Pointer Access
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
                     </div>
                   </motion.div>
                 </motion.div>
@@ -1672,66 +2066,6 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                 </div>
                 <span className="text-xl font-bold text-white">StremRx</span>
               </div>
-              {isHost && isScreenSharing && (
-                <>
-                  {pendingRequests.length > 0 && (
-                    <motion.div
-                      className="absolute bottom-16 left-4 bg-[#0a152c] p-2 rounded-md text-white"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ duration: 0.3 }}
-                    >
-                      <h3 className="text-sm font-semibold">
-                        Pointer Access Requests
-                      </h3>
-                      {pendingRequests.map((guestId) => (
-                        <div
-                          key={guestId}
-                          className="flex items-center gap-2 mt-1"
-                        >
-                          <span>{guestId}</span>
-                          <Button
-                            size="sm"
-                            className="bg-[#ff4d00] text-white"
-                            onClick={() => {
-                              socket.current?.emit("grantPointerAccess", {
-                                guestId,
-                              });
-                              socket.current?.emit("pointerAccessGranted", {
-                                guestId,
-                              });
-                              setPendingRequests((prev) =>
-                                prev.filter((id) => id !== guestId)
-                              );
-                              setCurrentPointerGuest(guestId);
-                            }}
-                          >
-                            Grant
-                          </Button>
-                        </div>
-                      ))}
-                    </motion.div>
-                  )}
-                  {currentPointerGuest && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-10 w-auto p-2 rounded-full bg-[#0a152c] border-[#1a2641] text-white"
-                      onClick={() => {
-                        socket.current?.emit("revokePointerAccess", {
-                          guestId: currentPointerGuest,
-                        });
-                        socket.current?.emit("pointerAccessGranted", {
-                          guestId: null,
-                        });
-                        setCurrentPointerGuest(null);
-                      }}
-                    >
-                      Revoke Pointer from {currentPointerGuest}
-                    </Button>
-                  )}
-                </>
-              )}
             </motion.div>
           </div>
 
@@ -1789,6 +2123,24 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
               )}
             </AnimatePresence>
             <div className="flex gap-2">
+              {inviteLink && role === "host" && (
+                <motion.div
+                  className="bg-black font-semibold p-2 rounded-md text-white mb-2 flex items-center "
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <p>Invite Link: {inviteLink}</p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setInviteLink(null)}
+                    className="text-red-500"
+                  >
+                    <X className="h-4 w-4 text-white" />
+                  </Button>
+                </motion.div>
+              )}
               <Button
                 variant="ghost"
                 size="sm"
@@ -1844,39 +2196,41 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
               </Button>
             </div>
 
-            <div className="space-y-2">
-              <h3 className="text-white text-lg font-semibold">Captions</h3>
-              <Input
-                value={newCaption}
-                onChange={(e) => setNewCaption(e.target.value)}
-                placeholder="Add caption..."
-                className="bg-[#1a2641] text-white border-[#1a2641]"
-              />
-              <Button
-                onClick={addCaption}
-                className="w-full bg-[#3a1996] text-white hover:bg-[#4c22c0]"
-              >
-                <Plus className="h-4 w-4 mr-2" /> Add Caption
-              </Button>
-              <div className="bg-[#1a2641] p-2 rounded-md max-h-24 overflow-y-auto">
-                {captions.map((caption) => (
-                  <div
-                    key={caption.id}
-                    className="text-white flex justify-between items-center mb-1"
-                  >
-                    {caption.text}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => deleteCaption(caption.id)}
-                      className="text-red-500 hover:text-red-700"
+            {role === "host" && (
+              <div className="space-y-2">
+                <h3 className="text-white text-lg font-semibold">Captions</h3>
+                <Input
+                  value={newCaption}
+                  onChange={(e) => setNewCaption(e.target.value)}
+                  placeholder="Add caption..."
+                  className="bg-[#1a2641] text-white border-[#1a2641]"
+                />
+                <Button
+                  onClick={addCaption}
+                  className="w-full bg-[#3a1996] text-white hover:bg-[#4c22c0]"
+                >
+                  <Plus className="h-4 w-4 mr-2" /> Add Caption
+                </Button>
+                <div className="bg-[#1a2641] p-2 rounded-md max-h-24 overflow-y-auto">
+                  {captions.map((caption) => (
+                    <div
+                      key={caption.id}
+                      className="text-white flex justify-between items-center mb-1"
                     >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
+                      {caption.text}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => deleteCaption(caption.id)}
+                        className="text-red-500 hover:text-red-700"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="space-y-2">
               <h3 className="text-white text-lg font-semibold">Chat</h3>
@@ -1904,8 +2258,114 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
           </div>
         </motion.div>
       </div>
-
       <audio ref={audioRef} />
+      <Dialog open={isNameModalOpen} onOpenChange={setIsNameModalOpen}>
+        <DialogContent className="bg-black text-white">
+          <DialogHeader>
+            <DialogTitle>Enter Your Name</DialogTitle>
+          </DialogHeader>
+          <Input
+            value={inputName}
+            onChange={(e) => setInputName(e.target.value)}
+            placeholder="Your name"
+            className="bg-[#1a2641] text-white border-[#1a2641]"
+          />
+          <Button
+            onClick={() => {
+              if (inputName.trim()) {
+                setGuestName(inputName.trim());
+                setIsNameModalOpen(false);
+                const urlParams = new URLSearchParams(window.location.search);
+                const guestId = urlParams.get("guestId");
+                socket.current.emit(
+                  "joinRoom",
+                  {
+                    roomId,
+                    userId: user?._id || guestId,
+                    guestId,
+                    guestName: inputName.trim(),
+                  },
+                  (res: any) => {
+                    if (res.success) initMediaSoup();
+                  }
+                );
+              }
+            }}
+            className="bg-[#ff4d00] text-white hover:bg-[#ff6b2c]"
+          >
+            Join
+          </Button>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isApprovalModalOpen} onOpenChange={setIsApprovalModalOpen}>
+        <DialogContent className="bg-black text-white">
+          <DialogHeader>
+            <DialogTitle>Guest Join Request</DialogTitle>
+          </DialogHeader>
+          <p>
+            Guest {guestToApprove?.guestId} wants to join the stream. Approve?
+          </p>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setIsApprovalModalOpen(false);
+                setGuestToApprove(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (guestToApprove) {
+                  socket.current.emit("denyJoin", {
+                    roomId,
+                    guestId: guestToApprove.guestId,
+                  });
+                }
+                setIsApprovalModalOpen(false);
+                setGuestToApprove(null);
+              }}
+            >
+              Deny
+            </Button>
+            <Button
+              variant="default"
+              onClick={() => {
+                if (guestToApprove) {
+                  socket.current.emit("approveJoin", {
+                    roomId,
+                    guestId: guestToApprove.guestId,
+                    guestSocketId: guestToApprove.guestSocketId,
+                  });
+                }
+                setIsApprovalModalOpen(false);
+                setGuestToApprove(null);
+              }}
+            >
+              Approve
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={showRemoveModal} onOpenChange={setShowRemoveModal}>
+        <DialogContent className="bg-black text-white">
+          <DialogHeader>
+            <DialogTitle>Remove Guest</DialogTitle>
+          </DialogHeader>
+          <p>Are you sure you want to remove this guest?</p>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="ghost" onClick={() => setShowRemoveModal(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmRemoveGuest}>
+              Remove
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   );
 };

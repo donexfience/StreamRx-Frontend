@@ -1,6 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useGetChannelByEmailQuery } from "@/redux/services/channel/channelApi";
+import {
+  useGetChannelByChannelIdQuery,
+  useGetChannelByEmailQuery,
+  useGetChannelByIdQuery,
+} from "@/redux/services/channel/channelApi";
 import {
   useEditStreamMutation,
   useGetChannelStreamsQuery,
@@ -26,6 +30,8 @@ export default function Page() {
   const [users, setUsers] = useState<any>(null);
   const [role, setRole] = useState<"host" | "guest">("host");
   const [isLive, setIsLive] = useState(false);
+  const [isGuest, setIsGuest] = useState(false);
+  const [activeChannelId, setActiveChannelId] = useState<any>(null);
   const router = useRouter();
 
   const handleStartStream = () => {
@@ -38,6 +44,7 @@ export default function Page() {
     setIsLive(true);
   };
 
+  // Fetch user data from cookies
   useEffect(() => {
     const fetchData = async () => {
       const decodeUser = await getUserFromCookies();
@@ -51,17 +58,60 @@ export default function Page() {
     { skip: !users?.email, refetchOnMountOrArgChange: true }
   );
 
+  // Fetch user's own channel data
   const { data: channelData, isLoading: channelLoading } =
-    useGetChannelByEmailQuery(users?.email, {
-      skip: !users?.email,
-    });
+    useGetChannelByEmailQuery(users?.email, { skip: !users?.email });
 
-  const channelId: any = channelData?._id;
+  // Check for guest status and verify token
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get("token");
+    if (token && userData?.user) {
+      setIsGuest(true);
+      const socket = io("https://localhost:3011", {
+        transports: ["websocket", "polling"],
+        forceNew: true,
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+        timeout: 5000,
+      });
+      socket.emit("verifyInvite", { token }, (response: any) => {
+        if (response.success) {
+          setRole("guest");
+          setActiveChannelId(response.roomId);
+        } else {
+          toast.error("Invalid or expired invite token");
+          router.push("/dashboard/streamer/main");
+        }
+        socket.disconnect();
+      });
+    } else if (!token && channelData?._id) {
+      setIsGuest(false);
+      setActiveChannelId(channelData._id);
+    }
+  }, [userData, channelData, router]);
+
+  console.log(activeChannelId, "channel id ");
+  console.log(isGuest, "is guest");
+
+  // Fetch active channel data (host's channel for guests, user's channel for streamers)
+  const { data: activeChannelData, isLoading: activeChannelLoading } =
+    useGetChannelByChannelIdQuery(activeChannelId, { skip: !activeChannelId });
+  console.log(activeChannelData, "active channel data");
+  // Fetch streams for the active channel
   const {
     data: streams,
     isLoading,
     refetch,
-  } = useGetChannelStreamsQuery(channelId, { skip: !channelId });
+  } = useGetChannelStreamsQuery(activeChannelId, { skip: !activeChannelId });
+
+  const channelId: any = channelData?._id;
+
+  // Fetch guest's own streams to check conflicts
+  const { data: guestOwnStreams } = useGetChannelStreamsQuery(channelId, {
+    skip: !isGuest || !channelData?._id,
+  });
 
   const [updateStreamStatus] = useEditStreamMutation();
 
@@ -79,52 +129,43 @@ export default function Page() {
         new Date(b.schedule.dateTime).getTime()
     );
 
-  useEffect(() => {
-    console.log(
-      "State Check:",
-      "startedStream:",
-      startedStream,
-      "pendingStream:",
-      pendingStream,
-      "scheduledStreams:",
-      scheduledStreams,
-      "showCreateStream:",
-      showCreateStream
-    );
-  }, [startedStream, pendingStream, scheduledStreams, showCreateStream]);
+  // Check guest's own streams for CONFLICTS  AND NEED TO EXIT TO START THEIR OWN STREAM
+  const guestHasStartedStream = guestOwnStreams?.data?.some(
+    (stream: any) => stream.status === "started"
+  );
+  const guestHasPendingStream = guestOwnStreams?.data?.some(
+    (stream: any) => stream.status === "pending" && !stream.schedule?.dateTime
+  );
+  const guestHasScheduledStream = guestOwnStreams?.data?.some(
+    (stream: any) =>
+      stream.schedule?.dateTime &&
+      new Date(stream.schedule.dateTime) <= new Date()
+  );
 
   useEffect(() => {
-    if (!startedStream || !userData?.user) return;
-
-    const urlParams = new URLSearchParams(window.location.search);
-    const token = urlParams.get("token");
-
-    const socket = io("https://localhost:3011", {
-      transports: ["websocket", "polling"],
-    });
-
-    if (token) {
-      socket.emit("verifyInvite", { token }, (response: any) => {
-        if (response.success && response.roomId === channelData?._id) {
-          setRole("guest");
-        } else {
-          toast.error("Invalid or expired invite token");
-          router.push("/dashboard/streamer/main");
-        }
-        socket.disconnect();
-      });
-    } else if (userData?.user?._id === startedStream?.createdBy) {
-      setRole("host");
-    } else {
-      setRole("guest");
+    if (isGuest) {
+      if (guestHasStartedStream || guestHasPendingStream) {
+        toast.error(
+          "You cannot join as a guest while you have an active stream."
+        );
+        router.push("/dashboard/streamer/main");
+      } else if (guestHasScheduledStream) {
+        toast.error(
+          "You have a scheduled stream starting soon. You may need to exit to start it."
+        );
+      }
     }
+  }, [
+    isGuest,
+    guestHasStartedStream,
+    guestHasPendingStream,
+    guestHasScheduledStream,
+    router,
+  ]);
 
-    return () => {
-      socket.disconnect();
-    };
-  }, [startedStream, userData, channelData, router]);
-
+  // Streamer-specific modal logic
   useEffect(() => {
+    if (isGuest) return;
     if (isLoading || !streams) return;
 
     if (startedStream) {
@@ -139,9 +180,18 @@ export default function Page() {
     } else {
       setShowWelcome(true);
     }
-  }, [startedStream, pendingStream, scheduledStreams, isLoading, streams]);
+  }, [
+    startedStream,
+    pendingStream,
+    scheduledStreams,
+    isLoading,
+    streams,
+    isGuest,
+  ]);
 
+  // Check for overdue scheduled streams and update status
   useEffect(() => {
+    if (isGuest) return;
     const checkOverdueStreams = async () => {
       if (!streams?.data) return;
       const now = new Date();
@@ -167,16 +217,11 @@ export default function Page() {
     checkOverdueStreams();
 
     return () => clearInterval(intervalId);
-  }, [streams, scheduledStreams, updateStreamStatus, refetch]);
+  }, [streams, scheduledStreams, updateStreamStatus, refetch, isGuest]);
 
   const containerVariants = {
     hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.1,
-      },
-    },
+    visible: { opacity: 1, transition: { staggerChildren: 0.1 } },
   };
 
   const itemVariants = {
@@ -184,20 +229,9 @@ export default function Page() {
     visible: {
       y: 0,
       opacity: 1,
-      transition: {
-        type: "spring",
-        stiffness: 100,
-      },
+      transition: { type: "spring", stiffness: 100 },
     },
-    hover: {
-      scale: 1.02,
-      boxShadow: "0 4px 12px rgba(0, 0, 0, 0.2)",
-      transition: {
-        type: "spring",
-        stiffness: 400,
-        damping: 10,
-      },
-    },
+    hover: { scale: 1.02, boxShadow: "0 4px 12px rgba(0, 0, 0, 0.2)" },
   };
 
   const handleStartScheduledStream = async (streamId: string) => {
@@ -238,7 +272,7 @@ export default function Page() {
       toast.error("Failed to start the stream.");
     }
   };
-
+  console.log(activeChannelData, "active channel data");
   const isWithinWindow = (scheduleTime: string) => {
     const now = new Date();
     const scheduled = new Date(scheduleTime);
@@ -246,20 +280,21 @@ export default function Page() {
     return timeDiff <= 5 && timeDiff >= 0;
   };
 
-  const earliestAccessibleStream = scheduledStreams?.find((stream: any) =>
-    isWithinWindow(stream.schedule.dateTime)
-  );
-  console.log(startedStream);
+  const handleExitToOwnStream = () => {
+    router.push("/dashboard/streamer/main");
+  };
 
   return (
-    <div className="min-h-screen bg-zinc-900 w-full ">
+    <div className="min-h-screen bg-zinc-900 w-full">
       {isLoading && (
         <div className="text-center text-gray-400 py-10">
           Loading streams...
         </div>
       )}
 
-      {!isLoading &&
+      {/* Streamer-specific modals */}
+      {!isGuest &&
+        !isLoading &&
         showWelcome &&
         !startedStream &&
         !pendingStream &&
@@ -273,7 +308,7 @@ export default function Page() {
             onScheduleLater={handleStartStream}
           />
         )}
-      {showCreateStream && !startedStream && !pendingStream && (
+      {!isGuest && showCreateStream && !startedStream && !pendingStream && (
         <CreateStreamModal
           onClose={() => setShowCreateStream(false)}
           setShowStreamPreview={setShowPreviewModal}
@@ -281,7 +316,7 @@ export default function Page() {
           refetchStreams={refetch}
         />
       )}
-      {showPreviewModal && pendingStream && (
+      {!isGuest && showPreviewModal && pendingStream && (
         <StreamPreviewModal
           channelId={channelData?._id || ""}
           stream={pendingStream}
@@ -292,33 +327,33 @@ export default function Page() {
           isLoading={isLoading}
         />
       )}
-      {startedStream && (
+
+      {/* LiveStudio for guests or streamers with a started stream */}
+      {(isGuest || startedStream) && activeChannelData && (
         <LiveStudio
-          streams={[startedStream]}
-          channelData={channelData}
+          streams={startedStream ? [startedStream] : []}
+          channelData={activeChannelData}
           user={userData?.user}
-          role={role}
+          role={isGuest ? "guest" : "host"}
         />
       )}
 
-      {/* Scheduled Streams Section */}
-      {!isLoading && !startedStream && scheduledStreams?.length > 0 && (
-        <div className="bg-zinc-900 rounded-lg shadow-lg">
-          <div className="flex items-center justify-between mb-6">
-            <h2
-              className="text-white text-2xl font-bold mt-4 ml-3"
-              onClick={() => router.push("/dashboard/streamer/main")}
-            >
-              Scheduled Streams
-            </h2>
-            <Calendar className="text-blue-400 w-6 h-6" />
-          </div>
-
-          {scheduledStreams.length === 0 ? (
-            <div className="text-center py-10 text-gray-400">
-              No scheduled streams available
+      {/* Scheduled Streams Section for Streamers */}
+      {!isGuest &&
+        !isLoading &&
+        !startedStream &&
+        scheduledStreams?.length > 0 && (
+          <div className="bg-zinc-900 rounded-lg shadow-lg">
+            <div className="flex items-center justify-between mb-6">
+              <h2
+                className="text-white text-2xl font-bold mt-4 ml-3"
+                onClick={() => router.push("/dashboard/streamer/main")}
+              >
+                Scheduled Streams
+              </h2>
+              <Calendar className="text-blue-400 w-6 h-6" />
             </div>
-          ) : (
+
             <motion.ul
               variants={containerVariants}
               initial="hidden"
@@ -346,7 +381,6 @@ export default function Page() {
                           <h3 className="text-white font-semibold text-lg">
                             {stream.title}
                           </h3>
-
                           <div className="flex items-center text-gray-400 text-sm">
                             <Calendar className="w-4 h-4 mr-2" />
                             {scheduleTime.toLocaleDateString(undefined, {
@@ -361,13 +395,11 @@ export default function Page() {
                               minute: "2-digit",
                             })}
                           </div>
-
                           <ScheduledTimeDisplay
                             scheduleTime={stream.schedule.dateTime}
                             status={stream.status}
                           />
                         </div>
-
                         <motion.div
                           whileHover={{ scale: 1.05 }}
                           whileTap={{ scale: 0.95 }}
@@ -381,7 +413,7 @@ export default function Page() {
                               canStart
                                 ? "bg-blue-600 hover:bg-blue-700"
                                 : "bg-zinc-700 text-zinc-400"
-                            } px-4 py-2 rounded-md transition-colors duration-200`}
+                            } px-4 py-2 rounded-md`}
                           >
                             <PlayCircle className="w-4 h-4 mr-2" />
                             Start Stream
@@ -389,7 +421,6 @@ export default function Page() {
                         </motion.div>
                       </div>
                     </div>
-
                     {canStart && (
                       <motion.div
                         initial={{ height: 0 }}
@@ -406,11 +437,11 @@ export default function Page() {
                 );
               })}
             </motion.ul>
-          )}
-        </div>
-      )}
-      <div className="flex justify-center pt-4 items-center">
-        {!isLoading && !startedStream && !pendingStream && (
+          </div>
+        )}
+
+      {!isGuest && !isLoading && !startedStream && !pendingStream && (
+        <div className="flex justify-center pt-4 items-center">
           <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
             <Button
               onClick={() => setShowCreateStream(true)}
@@ -419,8 +450,20 @@ export default function Page() {
               Create Stream
             </Button>
           </motion.div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* Exit Option for Guests with Scheduled Streams */}
+      {isGuest && guestHasScheduledStream && (
+        <div className="fixed bottom-4 right-4 z-50">
+          <Button
+            onClick={handleExitToOwnStream}
+            className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md"
+          >
+            Exit to Start Your Scheduled Stream
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
