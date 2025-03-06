@@ -68,7 +68,7 @@ export default function Page() {
     const token = urlParams.get("token");
     if (token && userData?.user) {
       setIsGuest(true);
-      const socket = io("https://localhost:3011", {
+      const socket = io("http://localhost:3011", {
         transports: ["websocket", "polling"],
         forceNew: true,
         reconnection: true,
@@ -283,6 +283,7 @@ export default function Page() {
   const handleExitToOwnStream = () => {
     router.push("/dashboard/streamer/main");
   };
+  console.log("userdat and role", userData, role);
 
   return (
     <div className="min-h-screen bg-zinc-900 w-full">
@@ -336,6 +337,7 @@ export default function Page() {
           user={userData?.user}
           role={isGuest ? "guest" : "host"}
         />
+        // <div className="text-white font-bold items-center justify-center flex">live studio</div>
       )}
 
       {/* Scheduled Streams Section for Streamers */}

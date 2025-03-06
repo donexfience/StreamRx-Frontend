@@ -282,9 +282,13 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
 
   // Effects
   useEffect(() => {
-    socket.current = io("https://localhost:3011", {
-      auth: { userId: user?._id },
-      transports: ["websocket", "polling"],
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get("token");
+    const guestId = urlParams.get("guestId");
+    console.log(token, "token", guestId, "guestId");
+    console.log(user, "userrssssssssssssssssssssssssss");
+    socket.current = io("http://localhost:3011", {
+      auth: { userId: user?._id, token: token, role: role },
       forceNew: true,
       reconnection: true,
       reconnectionAttempts: 5,
@@ -357,9 +361,6 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
         },
       ]);
     };
-    const urlParams = new URLSearchParams(window.location.search);
-    const token = urlParams.get("token");
-    const guestId = urlParams.get("guestId");
 
     if (role === "guest" && (isCameraOn || isScreenSharing)) {
       const stream =
@@ -386,7 +387,6 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     socket.current.on("joinDenied", ({ message }: { message: string }) => {
       setPendingApproval(false);
       toast.error(message || "Join request denied");
-
       router.push("/dashboard/streamer/main");
     });
     //guesting adding removing
@@ -520,7 +520,6 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
       socket.current.off("captionAdded");
       socket.current.off("chatMessage", handleChatMessage);
       socket.current.off("privateMessage", handlePrivateMessage);
-      socket.current.off;
       if (isLive) cleanupStream();
     };
   }, [
@@ -624,6 +623,11 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   useEffect(() => {
     if (device && deviceInitialized && isCameraOn) startWebcamStream();
   }, [device, deviceInitialized, isCameraOn]);
+
+  console.log(
+    role,
+    "rooooooooooooooooooooooooooooooooleeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+  );
 
   useEffect(() => {
     if (role === "host") {
@@ -2272,23 +2276,17 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
           />
           <Button
             onClick={() => {
+              console.log(inputName, "iinputtttttttttttt");
               if (inputName.trim()) {
                 setGuestName(inputName.trim());
                 setIsNameModalOpen(false);
                 const urlParams = new URLSearchParams(window.location.search);
                 const guestId = urlParams.get("guestId");
-                socket.current.emit(
-                  "joinRoom",
-                  {
-                    roomId,
-                    userId: user?._id || guestId,
-                    guestId,
-                    guestName: inputName.trim(),
-                  },
-                  (res: any) => {
-                    if (res.success) initMediaSoup();
-                  }
-                );
+                socket.current.emit("requestJoin", {
+                  roomId,
+                  userId: user?._id || guestId,
+                });
+                setPendingApproval(true);
               }
             }}
             className="bg-[#ff4d00] text-white hover:bg-[#ff6b2c]"
