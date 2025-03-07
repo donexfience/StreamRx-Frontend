@@ -253,6 +253,8 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     useState<mediasoupClient.types.Producer | null>(null);
   const [screenAudioProducer, setScreenAudioProducer] =
     useState<mediasoupClient.types.Producer | null>(null);
+  const [screenProducerTransport, setScreenProducerTransport] =
+    useState<mediasoupClient.types.Transport | null>(null);
 
   // Constants
   const currentStream: any = streams[0];
@@ -1057,6 +1059,25 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     socket.current.emit("selectScene", { roomId, sceneId: id });
   };
 
+  const produceWithRetry = async (
+    transport: any,
+    options: any,
+    retries = 3
+  ) => {
+    try {
+      return await transport.produce(options);
+    } catch (error: any) {
+      if (error.message.includes("ssrc already exists") && retries > 0) {
+        console.log(
+          `SSRC conflict detected. Retrying... (${retries} attempts left)`
+        );
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        return produceWithRetry(transport, options, retries - 1);
+      }
+      throw error;
+    }
+  };
+
   const toggleScreenShare = async () => {
     if (!device || !socket.current || !deviceInitialized) return;
 
@@ -1096,53 +1117,32 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
               setScreenAudioProducer(null);
             }
             if (screenVideoRef.current) screenVideoRef.current.srcObject = null;
+            if (screenProducerTransport) {
+              screenProducerTransport.close();
+              setScreenProducerTransport(null);
+            }
           };
         }
 
-        const transport: any =
-          producerTransport || (await createProducerTransport());
-        if (!producerTransport) setProducerTransport(transport);
+        const transport: any = await createProducerTransport();
+        setScreenProducerTransport(transport);
 
         const screenVideoTrack = screenStream.getVideoTracks()[0];
         if (screenVideoTrack) {
-          const newScreenProducer = await transport.produce({
+          const newScreenProducer = await produceWithRetry(transport, {
             track: screenVideoTrack,
             appData: { userId: user?._id },
           });
           setScreenProducer(newScreenProducer);
-          await new Promise<void>((resolve) => {
-            socket.current.emit(
-              "produce",
-              {
-                transportId: transport.id,
-                kind: newScreenProducer.kind,
-                rtpParameters: newScreenProducer.rtpParameters,
-                roomId,
-              },
-              () => resolve()
-            );
-          });
         }
 
         const screenAudioTrack = screenStream.getAudioTracks()[0];
         if (screenAudioTrack) {
-          const newScreenAudioProducer = await transport.produce({
+          const newScreenAudioProducer = await produceWithRetry(transport, {
             track: screenAudioTrack,
             appData: { userId: user?._id },
           });
           setScreenAudioProducer(newScreenAudioProducer);
-          await new Promise<void>((resolve) => {
-            socket.current.emit(
-              "produce",
-              {
-                transportId: transport.id,
-                kind: newScreenAudioProducer.kind,
-                rtpParameters: newScreenAudioProducer.rtpParameters,
-                roomId,
-              },
-              () => resolve()
-            );
-          });
         }
 
         setParticipantStreams((prev) => ({
@@ -1165,44 +1165,31 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
           socket.current.emit(
             "producerClosed",
             { producerId: screenProducer.id, roomId },
-            (response) => {
-              if (response?.success) {
-                console.log(
-                  `Screen producer ${screenProducer.id} closed successfully`
-                );
-              }
-              resolve();
-            }
+            () => resolve()
           );
         });
         setScreenProducer(null);
       }
-
       if (screenAudioProducer) {
         screenAudioProducer.close();
         await new Promise<void>((resolve) => {
           socket.current.emit(
             "producerClosed",
             { producerId: screenAudioProducer.id, roomId },
-            (response) => {
-              if (response?.success) {
-                console.log(
-                  `Screen audio producer ${screenAudioProducer.id} closed successfully`
-                );
-              }
-              resolve();
-            }
+            () => resolve()
           );
         });
         setScreenAudioProducer(null);
       }
-
       if (screenVideoRef.current?.srcObject) {
         const stream = screenVideoRef.current.srcObject as MediaStream;
         stream.getTracks().forEach((track) => track.stop());
         screenVideoRef.current.srcObject = null;
       }
-
+      if (screenProducerTransport) {
+        screenProducerTransport.close();
+        setScreenProducerTransport(null);
+      }
       setIsScreenSharing(false);
       setParticipantStreams((prev) => {
         const newStreams = { ...prev };
