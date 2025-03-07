@@ -248,9 +248,10 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     useState<mediasoupClient.types.Transport | null>(null);
   const [videoProducer, setVideoProducer] =
     useState<mediasoupClient.types.Producer | null>(null);
-  const [audioProducer, setAudioProducer] =
-    useState<mediasoupClient.types.Producer | null>(null);
+  const [audioProducer, setAudioProducer] = useState<any>(null);
   const [screenProducer, setScreenProducer] =
+    useState<mediasoupClient.types.Producer | null>(null);
+  const [screenAudioProducer, setScreenAudioProducer] =
     useState<mediasoupClient.types.Producer | null>(null);
 
   // Constants
@@ -280,6 +281,10 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     });
   }, [volume, participantStreams]);
 
+  useEffect(() => {
+    console.log("Participant Streams Updated:", participantStreams);
+  }, [participantStreams]);
+
   // Effects
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -302,16 +307,17 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
         guestName,
         "dssssssssssssssssssslfsdfklddddddddddddddd"
       );
-      if (role === "guest" && !guestName) {
-        console.log("inside if");
-        setIsNameModalOpen(true);
-      } else if (role === "guest") {
-        socket.current.emit("requestJoin", {
-          roomId,
-          userId: user?._id || guestId,
-        });
-        setPendingApproval(true);
-      } else {
+      if (role === "guest") {
+        if (!guestName) {
+          setIsNameModalOpen(true);
+        } else {
+          socket.current.emit("requestJoin", {
+            roomId,
+            userId: user?._id || guestId,
+          });
+          setPendingApproval(true);
+        }
+      } else if (role === "host") {
         socket.current.emit(
           "joinRoom",
           { roomId, userId: user?._id },
@@ -383,6 +389,18 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
         }
       );
     });
+
+    socket.current.on(
+      "newProducer",
+      async ({ producerId, userId }: { producerId: any; userId: any }) => {
+        if (userId === user?._id) return;
+        if (!deviceInitialized) {
+          setPendingProducers((prev) => [...prev, { producerId, userId }]);
+          return;
+        }
+        await consumeProducer(producerId, userId);
+      }
+    );
 
     socket.current.on("joinDenied", ({ message }: { message: string }) => {
       setPendingApproval(false);
@@ -462,18 +480,6 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
       setCaptions((prev) => [...prev, caption]);
     });
 
-    socket.current.on(
-      "newProducer",
-      async ({ producerId, userId }: { producerId: any; userId: any }) => {
-        if (userId === user?._id) return;
-        if (!deviceInitialized) {
-          setPendingProducers((prev) => [...prev, { producerId, userId }]);
-          return;
-        }
-        consumeProducer(producerId, userId);
-      }
-    );
-
     if (user?.username) {
       const nameParts = user.username.split(" ");
       setUserInitials(
@@ -544,8 +550,8 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   //consuming producer helper
 
   const consumeProducer = async (producerId: any, userId: any) => {
-    if (!device || !consumerTransport) {
-      console.error("Device or consumer transport not initialized");
+    if (!device || !consumerTransport || !socket.current) {
+      console.log("Device or consumer transport not initialized");
       return;
     }
     socket.current.emit(
@@ -557,14 +563,25 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
         roomId,
       },
       async (params: any) => {
+        if (!params || !params.id) {
+          console.error("Invalid consumer params:", params);
+          return;
+        }
         try {
           const consumer = await consumerTransport.consume(params);
           const stream = new MediaStream([consumer.track]);
-          setParticipantStreams((prev) => ({ ...prev, [userId]: stream }));
+          setParticipantStreams((prev) => ({
+            ...prev,
+            [userId]: stream,
+          }));
           const videoElement = participantVideoRefs.current[userId];
           if (videoElement) {
             videoElement.srcObject = stream;
-            await videoElement.play();
+            videoElement
+              .play()
+              .catch((err) =>
+                console.error(`Error playing video for ${userId}:`, err)
+              );
           }
         } catch (err) {
           console.error(`Error consuming producer ${producerId}:`, err);
@@ -691,59 +708,78 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     socket.current.disconnect();
     router.push("/dashboard/streamer/main");
   };
+  let isProducing = false;
 
   const startWebcamStream = async () => {
-    if (!device || !deviceInitialized || !socket.current) return;
+    if (isProducing) {
+      console.log("Already producing, please wait...");
+      return;
+    }
+    isProducing = true;
+
     try {
+      if (!device || !deviceInitialized || !socket.current) return;
+
       const stream = await navigator.mediaDevices.getUserMedia({
         video: true,
         audio: true,
       });
+
       if (webcamVideoRef.current) {
         webcamVideoRef.current.srcObject = stream;
         webcamVideoRef.current.muted = true;
-        await webcamVideoRef.current.play();
+        webcamVideoRef.current.addEventListener(
+          "loadedmetadata",
+          () => {
+            webcamVideoRef.current
+              ?.play()
+              .catch((err) => console.error("Error playing video:", err));
+          },
+          { once: true }
+        );
       }
 
       const transport: any =
         producerTransport || (await createProducerTransport());
       if (!producerTransport) setProducerTransport(transport);
 
+      // Handle audio producer
       const audioTrack = stream.getAudioTracks()[0];
       if (audioTrack) {
-        const audioProd = await transport.produce({
+        if (audioProducer) {
+          if (audioProducer) {
+            audioProducer.close();
+            setAudioProducer(null);
+          }
+        }
+        const newAudioProducer = await transport.produce({
           track: audioTrack,
           appData: { userId: user?._id },
         });
-        setAudioProducer(audioProd);
-        audioTrack.enabled = !isMuted;
-        socket.current.emit("produce", {
-          transportId: transport.id,
-          kind: audioProd.kind,
-          rtpParameters: audioProd.rtpParameters,
-          roomId,
-        });
+        setAudioProducer(newAudioProducer);
+        if (isMuted) await newAudioProducer.pause();
+        else await newAudioProducer.resume();
       }
 
       const videoTrack = stream.getVideoTracks()[0];
       if (videoTrack && isCameraOn) {
-        const videoProd = await transport.produce({
-          track: videoTrack,
-          appData: { userId: user?._id },
-        });
-        setVideoProducer(videoProd);
-        socket.current.emit("produce", {
-          transportId: transport.id,
-          kind: videoProd.kind,
-          rtpParameters: videoProd.rtpParameters,
-          roomId,
-        });
+        if (videoProducer) {
+          videoProducer.close();
+          setVideoProducer(null);
+        }
       }
 
+      const newVideoProducer = await transport.produce({
+        track: videoTrack,
+        appData: { userId: user?._id },
+      });
+      setVideoProducer(newVideoProducer);
       setParticipantStreams((prev) => ({ ...prev, [user?._id]: stream }));
     } catch (err) {
       console.error("Error starting webcam stream:", err);
       setIsCameraOn(false);
+    } finally {
+      isProducing = false;
     }
   };
 
@@ -936,56 +972,57 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     if (!fullScreen) studioRef.current?.requestFullscreen();
     else document.exitFullscreen();
   };
-  const toggleMute = () => {
+  const toggleMute = async () => {
     const newMutedState = !isMuted;
     setIsMuted(newMutedState);
-    if (audioProducer?.track) {
-      audioProducer.track.enabled = !newMutedState;
-    } else if (webcamVideoRef.current?.srcObject) {
-      const stream = webcamVideoRef.current.srcObject as MediaStream;
-      stream
-        .getAudioTracks()
-        .forEach((track) => (track.enabled = !newMutedState));
+    if (audioProducer) {
+      if (newMutedState) {
+        await audioProducer.pause();
+      } else {
+        await audioProducer.resume();
+      }
     }
   };
   const toggleCamera = async () => {
+    if (!device || !deviceInitialized) return;
     const newCameraState = !isCameraOn;
     setIsCameraOn(newCameraState);
 
     if (!newCameraState) {
       if (videoProducer) {
-        videoProducer.close();
-        setVideoProducer(null);
-      }
-      if (webcamVideoRef.current?.srcObject) {
-        const stream = webcamVideoRef.current.srcObject as MediaStream;
-        stream.getVideoTracks().forEach((track) => track.stop());
-      }
-      if (audioProducer && !isMuted) {
-        const stream = new MediaStream();
-        if (audioProducer?.track) stream.addTrack(audioProducer.track);
-        if (webcamVideoRef.current) {
-          webcamVideoRef.current.srcObject = stream;
-          await webcamVideoRef.current.play();
+        await new Promise<void>((resolve, reject) => {
+          socket.current.emit(
+            "closeProducer",
+            { producerId: videoProducer.id, roomId },
+            (response: any) => {
+              if (response.success) {
+                console.log(`Producer ${videoProducer.id} closed successfully`);
+                setVideoProducer(null);
+                resolve();
+              }
+            }
+          );
+        });
+
+        if (webcamVideoRef.current?.srcObject) {
+          const stream = webcamVideoRef.current.srcObject as MediaStream;
+          stream.getVideoTracks().forEach((track) => track.stop());
+          if (audioProducer && !isMuted) {
+            const audioStream = new MediaStream([audioProducer.track]);
+            webcamVideoRef.current.srcObject = audioStream;
+            await webcamVideoRef.current.play();
+          } else {
+            webcamVideoRef.current.srcObject = null;
+          }
+          webcamVideoRef.current.style.transform = isMirrored
+            ? "scaleX(-1)"
+            : "scaleX(1)";
         }
-      } else if (webcamVideoRef.current) {
-        webcamVideoRef.current.srcObject = null;
       }
     } else {
-      const selectedQuality = qualityOptions.find((q) => q.label === quality);
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: selectedQuality?.constraints || true,
-        audio: true,
-      });
-      if (webcamVideoRef.current) {
-        webcamVideoRef.current.srcObject = stream;
-        webcamVideoRef.current.style.transform = isMirrored
-          ? "scaleX(-1)"
-          : "scaleX(1)";
-      }
+      await startWebcamStream();
     }
   };
-
   const handleAddMediaScene = async (
     event: React.FormEvent<HTMLFormElement>
   ) => {
@@ -1021,74 +1058,157 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   };
 
   const toggleScreenShare = async () => {
-    if (!device || !socket.current) return;
+    if (!device || !socket.current || !deviceInitialized) return;
 
     if (!isScreenSharing) {
       setIsScreenSharing(true);
-      setTimeout(async () => {
-        try {
-          const screenStream: any =
-            await navigator.mediaDevices.getDisplayMedia({
-              video: true,
-              audio: true,
-            });
-          if (screenVideoRef.current) {
-            screenVideoRef.current.srcObject = screenStream;
-            await screenVideoRef.current
-              .play()
-              .catch((err) =>
-                console.error("Error playing screen share video:", err)
-              );
-            screenStream.oninactive = () => {
-              setIsScreenSharing(false);
-              screenProducer?.close();
+      try {
+        const screenStream: any = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: true,
+        });
+
+        if (screenVideoRef.current) {
+          screenVideoRef.current.srcObject = screenStream;
+          await screenVideoRef.current.play();
+          screenStream.oninactive = async () => {
+            setIsScreenSharing(false);
+            if (screenProducer) {
+              screenProducer.close();
+              await new Promise<void>((resolve) => {
+                socket.current.emit(
+                  "producerClosed",
+                  { producerId: screenProducer.id, roomId },
+                  () => resolve()
+                );
+              });
               setScreenProducer(null);
-              if (screenVideoRef.current)
-                screenVideoRef.current.srcObject = null;
-            };
-          }
-
-          const transport: any =
-            producerTransport || (await createProducerTransport());
-          const screenTrack = screenStream.getVideoTracks()[0];
-          const screenAudioTrack = screenStream.getAudioTracks()[0];
-          const Videoproducer: any = await transport.produce({
-            track: screenTrack,
-          });
-          setScreenProducer(videoProducer);
-          if (screenAudioTrack) {
-            const audioProducer = await transport.produce({
-              track: screenAudioTrack,
-            });
-            setAudioProducer(audioProducer);
-            audioProducer.track.enabled = !isMuted;
-            socket.current.emit("newProducer", {
-              producerId: audioProducer.id,
-              userId: user?._id,
-            });
-          }
-          socket.current.emit("newProducer", {
-            producerId: videoProducer?.id,
-            userId: user?._id,
-          });
-
-          if (!producerTransport) setProducerTransport(transport);
-        } catch (err) {
-          console.error("Error sharing screen:", err);
-          setIsScreenSharing(false);
+            }
+            if (screenAudioProducer) {
+              screenAudioProducer.close();
+              await new Promise<void>((resolve) => {
+                socket.current.emit(
+                  "producerClosed",
+                  { producerId: screenAudioProducer.id, roomId },
+                  () => resolve()
+                );
+              });
+              setScreenAudioProducer(null);
+            }
+            if (screenVideoRef.current) screenVideoRef.current.srcObject = null;
+          };
         }
-      }, 100);
+
+        const transport: any =
+          producerTransport || (await createProducerTransport());
+        if (!producerTransport) setProducerTransport(transport);
+
+        const screenVideoTrack = screenStream.getVideoTracks()[0];
+        if (screenVideoTrack) {
+          const newScreenProducer = await transport.produce({
+            track: screenVideoTrack,
+            appData: { userId: user?._id },
+          });
+          setScreenProducer(newScreenProducer);
+          await new Promise<void>((resolve) => {
+            socket.current.emit(
+              "produce",
+              {
+                transportId: transport.id,
+                kind: newScreenProducer.kind,
+                rtpParameters: newScreenProducer.rtpParameters,
+                roomId,
+              },
+              () => resolve()
+            );
+          });
+        }
+
+        const screenAudioTrack = screenStream.getAudioTracks()[0];
+        if (screenAudioTrack) {
+          const newScreenAudioProducer = await transport.produce({
+            track: screenAudioTrack,
+            appData: { userId: user?._id },
+          });
+          setScreenAudioProducer(newScreenAudioProducer);
+          await new Promise<void>((resolve) => {
+            socket.current.emit(
+              "produce",
+              {
+                transportId: transport.id,
+                kind: newScreenAudioProducer.kind,
+                rtpParameters: newScreenAudioProducer.rtpParameters,
+                roomId,
+              },
+              () => resolve()
+            );
+          });
+        }
+
+        setParticipantStreams((prev) => ({
+          ...prev,
+          [user?._id]: screenStream,
+        }));
+      } catch (err) {
+        console.error("Error starting screen share:", err);
+        setIsScreenSharing(false);
+        if (screenVideoRef.current?.srcObject) {
+          const stream = screenVideoRef.current.srcObject as MediaStream;
+          stream.getTracks().forEach((track) => track.stop());
+          screenVideoRef.current.srcObject = null;
+        }
+      }
     } else {
       if (screenProducer) {
         screenProducer.close();
+        await new Promise<void>((resolve) => {
+          socket.current.emit(
+            "producerClosed",
+            { producerId: screenProducer.id, roomId },
+            (response) => {
+              if (response?.success) {
+                console.log(
+                  `Screen producer ${screenProducer.id} closed successfully`
+                );
+              }
+              resolve();
+            }
+          );
+        });
         setScreenProducer(null);
       }
+
+      if (screenAudioProducer) {
+        screenAudioProducer.close();
+        await new Promise<void>((resolve) => {
+          socket.current.emit(
+            "producerClosed",
+            { producerId: screenAudioProducer.id, roomId },
+            (response) => {
+              if (response?.success) {
+                console.log(
+                  `Screen audio producer ${screenAudioProducer.id} closed successfully`
+                );
+              }
+              resolve();
+            }
+          );
+        });
+        setScreenAudioProducer(null);
+      }
+
       if (screenVideoRef.current?.srcObject) {
         const stream = screenVideoRef.current.srcObject as MediaStream;
         stream.getTracks().forEach((track) => track.stop());
         screenVideoRef.current.srcObject = null;
       }
+
       setIsScreenSharing(false);
+      setParticipantStreams((prev) => {
+        const newStreams = { ...prev };
+        delete newStreams[user?._id];
+        return newStreams;
+      });
     }
   };
 
@@ -1312,12 +1432,17 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   };
   if (pendingApproval) {
     return (
-      <div className="flex items-center justify-center h-screen bg-[#0a152c] text-white">
-        Waiting for host approval...
+      <div className="flex flex-col items-center justify-center h-screen bg-gray-900 text-white p-4">
+        <div className="mb-4">
+          <div className="w-12 h-12 rounded-full border-4 border-blue-500 border-t-transparent animate-spin"></div>
+        </div>
+        <h2 className="text-xl font-semibold mb-2">
+          Waiting for host approval...
+        </h2>
+        <p className="text-gray-400 text-sm">This may take a moment</p>
       </div>
     );
   }
-
   // Render
   return (
     <motion.div

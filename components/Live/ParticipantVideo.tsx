@@ -13,9 +13,13 @@ export const ParticipantVideo = forwardRef<
     if (ref && "current" in ref && ref.current) {
       const video = ref.current;
       video.srcObject = stream;
-      video.play().catch((err) => console.error("Error playing video:", err));
+      video
+        .play()
+        .catch((err) =>
+          console.error(`Error playing video for ${userId}:`, err)
+        );
     }
-  }, [stream]);
+  }, [stream, userId]);
 
   return (
     <video
@@ -23,6 +27,7 @@ export const ParticipantVideo = forwardRef<
       autoPlay
       playsInline
       className="w-full h-full object-cover"
+      onError={(e) => console.error(`Video error for ${userId}:`, e)}
     />
   );
 });
