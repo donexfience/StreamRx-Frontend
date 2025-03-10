@@ -236,7 +236,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
 
   // To fix device initialization before starting the webcam stream
   const [pendingProducers, setPendingProducers] = useState<
-    { producerId: string; userId: string }[]
+    { producerId: string; userId: string; type: string }[]
   >([]);
 
   // Refs
@@ -330,8 +330,16 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     const setupProducerListeners = () => {
       socket.current.on(
         "newProducer",
-        async ({ producerId, userId }: { producerId: any; userId: any }) => {
-          console.log("Received new producer", producerId, userId);
+        async ({
+          producerId,
+          userId,
+          type,
+        }: {
+          producerId: string;
+          userId: string;
+          type: string;
+        }) => {
+          console.log("Received new producer", producerId, userId, type);
           if (userId === user?._id) return;
           if (isInitialized) {
             console.log("consuming after initializing");
@@ -339,37 +347,44 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
               producerId,
               userId,
               device!,
-              consumerTransport!
+              consumerTransport!,
+              type
             );
           } else {
-            setPendingProducers((prev) => [...prev, { producerId, userId }]);
+            setPendingProducers((prev) => [
+              ...prev,
+              { producerId, userId, type },
+            ]);
           }
         }
       );
 
       socket.current.on(
         "existingProducers",
-        ({ producers }: { producers: any }) => {
+        ({
+          producers,
+        }: {
+          producers: { producerId: string; userId: string; type: string }[];
+        }) => {
           console.log("Received existing producers", producers);
-          producers.forEach(
-            ({ producerId, userId }: { producerId: any; userId: any }) => {
-              if (userId !== user?._id) {
-                if (isInitialized) {
-                  consumeProducer(
-                    producerId,
-                    userId,
-                    device!,
-                    consumerTransport!
-                  );
-                } else {
-                  setPendingProducers((prev) => [
-                    ...prev,
-                    { producerId, userId },
-                  ]);
-                }
+          producers.forEach(({ producerId, userId, type }) => {
+            if (userId !== user?._id) {
+              if (isInitialized) {
+                consumeProducer(
+                  producerId,
+                  userId,
+                  device!,
+                  consumerTransport!,
+                  type
+                );
+              } else {
+                setPendingProducers((prev) => [
+                  ...prev,
+                  { producerId, userId, type },
+                ]);
               }
             }
-          );
+          });
         }
       );
     };
@@ -614,12 +629,21 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
 
   useEffect(() => {
     if (deviceInitialized && pendingProducers.length > 0) {
-      pendingProducers.forEach(({ producerId, userId }) => {
-        consumeProducer(producerId, userId, device!, consumerTransport!);
+      pendingProducers.forEach(({ producerId, userId, type }) => {
+        consumeProducer(producerId, userId, device!, consumerTransport!, type);
       });
       setPendingProducers([]);
     }
   }, [deviceInitialized, pendingProducers]);
+
+  useEffect(() => {
+    if (localUserId && participantStreams[localUserId]?.screen && screenVideoRef.current) {
+      const screenStream = participantStreams[localUserId].screen;
+      if (screenVideoRef.current.srcObject !== screenStream) {
+        screenVideoRef.current.srcObject = screenStream;
+      }
+    }
+  }, [localUserId, participantStreams]);
 
   useEffect(() => {
     console.log(deviceInitialized, "device initialized - from useEffect");
@@ -627,10 +651,11 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   }, [deviceInitialized]);
 
   const consumeProducer = async (
-    producerId: any,
-    userId: any,
+    producerId: string,
+    userId: string,
     device: mediasoupClient.Device,
-    consumerTransport: mediasoupClient.types.Transport
+    consumerTransport: mediasoupClient.types.Transport,
+    type: string
   ) => {
     if (!device || !consumerTransport || !socket.current) {
       console.log("Device or consumer transport not initialized");
@@ -651,17 +676,13 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
         }
         try {
           const consumer = await consumerTransport.consume(params);
-          const { type } = params.appData || {};
-          if (!type) {
-            console.error("Missing type in appData for producer:", producerId);
-            return;
-          }
-
           const streamType = type.startsWith("webcam")
             ? "webcam"
             : type.startsWith("screen")
             ? "screen"
-            : "audio";
+            : type.startsWith("audio")
+            ? "audio"
+            : "webcam";
 
           setParticipantStreams((prev) => {
             const userStreams = prev[userId] || {
@@ -683,6 +704,8 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
               [userId]: { ...userStreams, [streamType]: stream },
             };
           });
+
+          await consumer.resume();
         } catch (err) {
           console.error(`Error consuming producer ${producerId}:`, err);
         }
@@ -863,7 +886,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
         [user?._id]: {
           ...prev[user?._id],
           webcam: stream,
-          audio: undefined, 
+          audio: undefined,
         },
       }));
 
@@ -1348,6 +1371,9 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
           [user?._id]: {
             ...prev[user?._id],
             screen: screenStream,
+            ...(screenAudioTrack && {
+              audio: new MediaStream([screenAudioTrack]),
+            }),
           },
         }));
       } catch (err) {
@@ -1367,7 +1393,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
       setParticipantStreams((prev) => {
         const userStreams = prev[user?._id];
         if (userStreams) {
-          const { screen, ...rest } = userStreams;
+          const { screen, audio, ...rest } = userStreams;
           return { ...prev, [user?._id]: rest };
         }
         return prev;
@@ -1637,8 +1663,21 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
 
   const renderLocalStream = () => {
     const streamData = participantStreams[user?._id];
+    if (streamData && (webcamVideoRef.current || screenVideoRef.current)) {
+      if (streamData.webcam && webcamVideoRef.current) {
+        webcamVideoRef.current.srcObject = streamData.webcam;
+      
+      }
+      if (streamData.screen && screenVideoRef.current) {
+        screenVideoRef.current.srcObject = streamData.screen;
+       
+      }
+    }
 
-    if (!streamData || (!streamData.webcam && !streamData.audio)) {
+    if (
+      !streamData ||
+      (!streamData.webcam && !streamData.audio && !streamData.screen)
+    ) {
       return (
         <div className="w-full h-full flex items-center justify-center bg-gray-800">
           <div className="w-24 h-24 rounded-full bg-blue-700 flex items-center justify-center">
@@ -1647,6 +1686,43 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
             </span>
           </div>
         </div>
+      );
+    }
+
+    if (streamData.screen && streamData.webcam) {
+      console.log(streamData.screen,"stream")
+      return (
+        <div className="relative w-full h-full">
+          <video
+            ref={screenVideoRef}
+            autoPlay
+            playsInline
+            muted={true}
+            className="w-full h-full object-cover"
+          />
+          <div className="absolute top-2 right-2 w-32 h-24 rounded-md overflow-hidden bg-black z-20">
+            <video
+              ref={webcamVideoRef}
+              autoPlay
+              playsInline
+              muted={true}
+              className="w-full h-full object-cover"
+              style={{ transform: isMirrored ? "scaleX(-1)" : "scaleX(1)" }}
+            />
+          </div>
+        </div>
+      );
+    }
+
+    if (streamData.screen) {
+      return (
+        <video
+          ref={screenVideoRef}
+          autoPlay
+          playsInline
+          muted={true}
+          className="w-full h-full object-cover"
+        />
       );
     }
 
@@ -1661,10 +1737,19 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
           style={{ transform: isMirrored ? "scaleX(-1)" : "scaleX(1)" }}
         />
       );
-    } else if (streamData.audio) {
+    }
+
+    if (streamData.audio) {
       return (
         <div className="w-full h-full flex items-center justify-center bg-gray-800">
-          <audio ref={audioRef} autoPlay />
+          <audio
+            ref={(element) => {
+              if (element && streamData.audio) {
+                element.srcObject = streamData.audio;
+              }
+            }}
+            autoPlay
+          />
           <div className="w-24 h-24 rounded-full bg-blue-700 flex items-center justify-center">
             <span className="text-4xl font-bold text-white">
               {userInitials}
@@ -2013,126 +2098,76 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                       layout
                       transition={{ duration: 0.3 }}
                     >
-                      {participant.userId === localUserId ? (
-                        <>
-                          <AnimatePresence>
-                            {isScreenSharing ? (
-                              <motion.div
-                                key="screen"
-                                className="w-full h-full relative"
-                                initial={{ opacity: 0, scale: 0.8 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                exit={{ opacity: 0, scale: 0.8 }}
-                                transition={{ duration: 0.3 }}
-                              >
-                                <video
-                                  ref={screenVideoRef}
-                                  autoPlay
-                                  playsInline
-                                  muted={true}
-                                  className="w-full h-full object-cover"
-                                />
-                              </motion.div>
-                            ) : (
-                              <motion.div
-                                key={isCameraOn ? "webcam" : "off"}
-                                className="w-full h-full relative"
-                                initial={{ opacity: 0, scale: 0.8 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                exit={{ opacity: 0, scale: 0.8 }}
-                                transition={{ duration: 0.3 }}
-                              >
-                                {renderLocalStream()}
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
+                      {participant.userId === localUserId
+                        ? renderLocalStream()
+                        : (() => {
+                            const userStreams =
+                              participantStreams[participant.userId] || {};
+                            const mainStream =
+                              userStreams.screen?.getTracks().length ?? 0 > 0
+                                ? userStreams.screen
+                                : userStreams.webcam || userStreams.audio;
+                            const hasWebcam =
+                              (userStreams.webcam?.getTracks().length ?? 0) > 0;
 
-                          {isScreenSharing && isCameraOn && (
-                            <motion.div
-                              className="absolute top-2 right-2 w-32 h-24 rounded-md overflow-hidden bg-black z-20"
-                              initial={{ x: 100, opacity: 0 }}
-                              animate={{ x: 0, opacity: 1 }}
-                              exit={{ x: 100, opacity: 0 }}
-                              transition={{ duration: 0.3 }}
-                            >
-                              <video
-                                ref={webcamVideoRef}
-                                autoPlay
-                                playsInline
-                                muted={true}
-                                className="w-full h-full object-cover"
-                                style={{
-                                  transform: isMirrored
-                                    ? "scaleX(-1)"
-                                    : "scaleX(1)",
-                                }}
-                              />
-                            </motion.div>
-                          )}
-                        </>
-                      ) : (
-                        (() => {
-                          const userStreams: any =
-                            participantStreams[participant.userId] || {};
-                          const mainStream =
-                            userStreams.screen?.getTracks().length > 0
-                              ? userStreams.screen
-                              : userStreams.webcam || userStreams.audio;
-                          const hasWebcam =
-                            userStreams.webcam?.getTracks().length > 0;
-
-                          return (
-                            <div className="relative w-full h-full">
-                              {mainStream ? (
-                                mainStream === userStreams.audio ? (
+                            return (
+                              <div className="relative w-full h-full">
+                                {mainStream ? (
+                                  mainStream === userStreams.audio ? (
+                                    <div className="w-full h-full flex items-center justify-center bg-gray-800">
+                                      <audio
+                                        autoPlay
+                                        ref={(element) => {
+                                          if (element) {
+                                            element.srcObject = mainStream;
+                                          }
+                                        }}
+                                      />
+                                      <div className="w-24 h-24 rounded-full bg-blue-700 flex items-center justify-center">
+                                        <span className="text-4xl font-bold text-white">
+                                          {getInitials(participant.name)}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <ParticipantVideo
+                                      userId={participant.userId}
+                                      stream={mainStream}
+                                      ref={(el) => {
+                                        participantVideoRefs.current[
+                                          participant.userId
+                                        ] = el;
+                                      }}
+                                    />
+                                  )
+                                ) : (
                                   <div className="w-full h-full flex items-center justify-center bg-gray-800">
-                                    <audio autoPlay srcObject={mainStream} />
                                     <div className="w-24 h-24 rounded-full bg-blue-700 flex items-center justify-center">
                                       <span className="text-4xl font-bold text-white">
                                         {getInitials(participant.name)}
                                       </span>
                                     </div>
                                   </div>
-                                ) : (
-                                  <ParticipantVideo
-                                    userId={participant.userId}
-                                    stream={mainStream}
-                                    ref={(el) => {
-                                      participantVideoRefs.current[
-                                        participant.userId
-                                      ] = el;
-                                    }}
-                                  />
-                                )
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center bg-gray-800">
-                                  <div className="w-24 h-24 rounded-full bg-blue-700 flex items-center justify-center">
-                                    <span className="text-4xl font-bold text-white">
-                                      {getInitials(participant.name)}
-                                    </span>
-                                  </div>
-                                </div>
-                              )}
-                              {hasWebcam &&
-                                mainStream === userStreams.screen && (
-                                  <div className="absolute top-2 right-2 w-32 h-24 rounded-md overflow-hidden bg-black z-20">
-                                    <video
-                                      autoPlay
-                                      playsInline
-                                      muted={true}
-                                      className="w-full h-full object-cover"
-                                      ref={(el) => {
-                                        if (el && userStreams.webcam) {
-                                          el.srcObject = userStreams.webcam;
-                                        }
-                                      }}
-                                    />
-                                  </div>
                                 )}
-                            </div>
-                          );
-                        })()
-                      )}
+                                {hasWebcam &&
+                                  mainStream === userStreams.screen && (
+                                    <div className="absolute top-2 right-2 w-32 h-24 rounded-md overflow-hidden bg-black z-20">
+                                      <video
+                                        autoPlay
+                                        playsInline
+                                        muted={true}
+                                        className="w-full h-full object-cover"
+                                        ref={(el) => {
+                                          if (el && userStreams.webcam) {
+                                            el.srcObject = userStreams.webcam;
+                                          }
+                                        }}
+                                      />
+                                    </div>
+                                  )}
+                              </div>
+                            );
+                          })()}
                       <div className="absolute bottom-0 left-0 right-0 p-2 bg-[#0a152c40] z-10 flex justify-between items-center">
                         <span className="text-white text-sm">
                           {participant.name}
