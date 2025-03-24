@@ -13,15 +13,16 @@ import CreateStreamModal from "@/components/Live/CreateStreamModal";
 import { StreamPreviewModal } from "@/components/Live/StreamPreviewModal";
 import { WelcomeModal } from "@/components/Live/welcomeModal";
 import { getUserFromCookies } from "@/app/lib/action/auth";
-import { LiveStudio } from "@/components/Live/LiveStudioComponent";
 import { useGetUserQuery } from "@/redux/services/user/userApi";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import { Calendar, Clock, PlayCircle } from "lucide-react";
-import { motion } from "framer-motion";
+import { Calendar, Clock, Loader2, PlayCircle } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import { ScheduledTimeDisplay } from "@/components/Live/sheduleTimeDisplay";
 import { io } from "socket.io-client";
+import LiveStudio from "@/components/Live/LiveStudio";
+import NameTypingModal from "@/components/Live/studio/modal/NameTypingModal";
 
 export default function Page() {
   const [showWelcome, setShowWelcome] = useState(true);
@@ -32,6 +33,13 @@ export default function Page() {
   const [isLive, setIsLive] = useState(false);
   const [isGuest, setIsGuest] = useState(false);
   const [activeChannelId, setActiveChannelId] = useState<any>(null);
+
+  //guest approval states
+  const [showUsernameModal, setShowUsernameModal] = useState(false);
+  const [username, setUsername] = useState("");
+  const [isWaitingForApproval, setIsWaitingForApproval] = useState(false);
+  const [isApproved, setIsApproved] = useState(false);
+
   const router = useRouter();
 
   const handleStartStream = () => {
@@ -80,6 +88,7 @@ export default function Page() {
         if (response.success) {
           setRole("guest");
           setActiveChannelId(response.roomId);
+          setShowUsernameModal(true);
         } else {
           toast.error("Invalid or expired invite token");
           router.push("/dashboard/streamer/main");
@@ -286,7 +295,7 @@ export default function Page() {
   console.log("userdat and role", userData, role);
 
   return (
-    <div className="min-h-screen bg-zinc-900 w-full">
+    <div className="min-h-screen bg-zinc-900 w-full z-20">
       {isLoading && (
         <div className="text-center text-gray-400 py-10">
           Loading streams...
@@ -329,15 +338,57 @@ export default function Page() {
         />
       )}
 
+      {showUsernameModal && (
+        <NameTypingModal
+          onClose={() => {
+            setShowUsernameModal(false);
+            router.push("/dashboard/streamer/main");
+          }}
+          onJoin={(inputUsername: any) => {
+            setUsername(inputUsername.username);
+            setShowUsernameModal(false);
+            setIsWaitingForApproval(true);
+
+            const socket = io("http://localhost:3011", {
+              transports: ["websocket", "polling"],
+              forceNew: true,
+            });
+            const token = new URLSearchParams(window.location.search).get(
+              "token"
+            );
+            socket.emit("requestToJoin", {
+              token,
+              username: inputUsername.username,
+              channelId: activeChannelId,
+              userId: userData?.user?._id,
+              cameraOn: inputUsername.cameraOn,
+              micOn: inputUsername.micOn,
+            });
+
+            socket.on("joinApproved", ({ streamId }) => {
+              setIsWaitingForApproval(false);
+              setIsApproved(true);
+              socket.disconnect();
+            });
+
+            socket.on("joinDenied", () => {
+              setIsWaitingForApproval(false);
+              toast.error("The host has denied your request to join.");
+              router.push("/dashboard/streamer/main");
+              socket.disconnect();
+            });
+          }}
+        />
+      )}
+
       {/* LiveStudio for guests or streamers with a started stream */}
-      {(isGuest || startedStream) && activeChannelData && (
+      {(isGuest ? isApproved && activeChannelData : startedStream) && (
         <LiveStudio
           streams={startedStream ? [startedStream] : []}
           channelData={activeChannelData}
           user={userData?.user}
           role={isGuest ? "guest" : "host"}
         />
-        // <div className="text-white font-bold items-center justify-center flex">live studio</div>
       )}
 
       {/* Scheduled Streams Section for Streamers */}
@@ -465,6 +516,48 @@ export default function Page() {
             Exit to Start Your Scheduled Stream
           </Button>
         </div>
+      )}
+
+      {isWaitingForApproval && (
+        <AnimatePresence>
+          {isWaitingForApproval && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 flex items-center justify-center bg-black/60 z-50"
+            >
+              <motion.div
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.8, opacity: 0 }}
+                transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                className="bg-zinc-800 rounded-2xl p-8 border border-zinc-700 shadow-2xl text-center max-w-md w-full"
+              >
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{
+                    repeat: Infinity,
+                    duration: 1.5,
+                    ease: "linear",
+                  }}
+                  className="mx-auto mb-6 w-16 h-16"
+                >
+                  <Loader2 className="w-full h-full text-blue-500 animate-spin" />
+                </motion.div>
+
+                <h2 className="text-white text-2xl font-bold mb-4 tracking-tight">
+                  Waiting for Host Approval
+                </h2>
+
+                <p className="text-gray-400 text-sm leading-relaxed">
+                  Your request to join is being reviewed. Please be patient
+                  while the host makes a decision.
+                </p>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       )}
     </div>
   );

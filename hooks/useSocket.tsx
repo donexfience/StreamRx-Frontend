@@ -4,12 +4,14 @@ import { io, Socket } from "socket.io-client";
 interface SocketHook {
   authSocket: Socket | null;
   communitySocket: Socket | null;
+  streamingSocket: Socket | null;
 }
 
 export const useSocket = () => {
   const [sockets, setSockets] = useState<SocketHook>({
     authSocket: null,
     communitySocket: null,
+    streamingSocket: null,
   });
 
   useEffect(() => {
@@ -27,6 +29,18 @@ export const useSocket = () => {
 
     const communitySocket = io(
       process.env.COMMUNITY_SERVICE_URL || "http://localhost:3009",
+      {
+        transports: ["websocket", "polling"],
+        forceNew: true,
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+        timeout: 5000,
+      }
+    );
+
+    const streamingSocket = io(
+      process.env.STREAMING_SERVICE_URL || "http://localhost:3011",
       {
         transports: ["websocket", "polling"],
         forceNew: true,
@@ -63,14 +77,25 @@ export const useSocket = () => {
       console.log("Community Server response:", data);
     });
 
+    streamingSocket.on("connect", () => {
+      console.log("communitySocket connected");
+      communitySocket.emit("message", "Hello Community Server");
+    });
+
+    streamingSocket.on("response", (data) => {
+      console.log("Community Server response:", data);
+    });
+
     setSockets({
       authSocket,
       communitySocket,
+      streamingSocket,
     });
 
     return () => {
       authSocket.disconnect();
       communitySocket.disconnect();
+      streamingSocket.disconnect();
     };
   }, []);
 

@@ -1,5 +1,6 @@
 import { createApi } from "@reduxjs/toolkit/query/react";
 import { baseQueryWithTokenHandling } from "./streamingBaseQuery";
+import { string } from "zod";
 
 interface StreamsResponse {
   data: Stream[];
@@ -41,11 +42,16 @@ interface EditStreamRequest {
   updateData: Partial<Stream>;
 }
 
+interface MessageResponse {
+  message: string;
+}
+
 export const httpStreamingApi = createApi({
   reducerPath: "httpStreamingApi",
   baseQuery: baseQueryWithTokenHandling,
   keepUnusedDataFor: 0,
   endpoints: (builder) => ({
+    // Existing streaming endpoints
     createStream: builder.mutation<Stream, any>({
       query: (streamData) => ({
         url: "/api/streamer/",
@@ -72,6 +78,65 @@ export const httpStreamingApi = createApi({
         body: { updateData },
       }),
     }),
+    getStreamers: builder.query<
+      any,
+      {
+        userId: string;
+        page?: number;
+        limit?: number;
+        search?: string;
+        startDate: any;
+        endDate: any;
+      }
+    >({
+      query: ({ userId, page = 1, limit = 10, search }) => ({
+        url: `api/friends/users/${userId}/streamers`,
+        method: "GET",
+        params: { page, limit, search },
+      }),
+    }),
+    sendFriendRequest: builder.mutation<
+      MessageResponse,
+      { userId: string; friendId: string }
+    >({
+      query: ({ userId, friendId }) => {
+        console.log("Sending friend request to:", friendId);
+
+        return {
+          url: `/api/friends/users/${userId}/friend-request`,
+          method: "POST",
+          body: { friendId },
+        };
+      },
+    }),
+
+    getFrinedOfStreamer: builder.mutation<any, { userId: string }>({
+      query: ({ userId }) => ({
+        url: `/api/friends/user/${userId}/GetFriends`,
+        method: "GET",
+      }),
+    }),
+    acceptFriendRequest: builder.mutation<
+      MessageResponse,
+      { userId: string; friendId: string }
+    >({
+      query: ({ userId, friendId }) => ({
+        url: `/api/friends/users/${userId}/accept-friend`,
+        method: "POST",
+        body: { friendId },
+      }),
+    }),
+
+    blockFriend: builder.mutation<
+      MessageResponse,
+      { userId: string; friendId: string }
+    >({
+      query: ({ userId, friendId }) => ({
+        url: `/api/friends/users/${userId}/block`,
+        method: "POST",
+        body: { friendId },
+      }),
+    }),
   }),
 });
 
@@ -80,4 +145,9 @@ export const {
   useGetStreamQuery,
   useGetChannelStreamsQuery,
   useEditStreamMutation,
+  useGetStreamersQuery,
+  useSendFriendRequestMutation,
+  useAcceptFriendRequestMutation,
+  useGetFrinedOfStreamerMutation,
+  useBlockFriendMutation,
 } = httpStreamingApi;
