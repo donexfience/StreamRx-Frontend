@@ -4,7 +4,7 @@ import { io, Socket } from "socket.io-client";
 interface SocketHook {
   authSocket: Socket | null;
   communitySocket: Socket | null;
-  streamingSocket: Socket | null;
+  streamingSocket: Socket | any;
 }
 
 export const useSocket = () => {

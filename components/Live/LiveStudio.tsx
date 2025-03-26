@@ -7,12 +7,17 @@ import SourcePanel from "./studio/SourcePanel";
 import Sidebar from "./studio/SideBar";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
+import { DndProvider } from "react-dnd";
+import { HTML5Backend } from "react-dnd-html5-backend";
+import * as mediasoup from "mediasoup-client";
 
 interface LIVESTUDIOProps {
   role: "host" | "guest";
   user: any;
   channelData?: any;
   streams?: any[];
+  initialCameraOn?: boolean;
+  initialMicOn?: boolean;
 }
 
 const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
@@ -20,8 +25,11 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
   user,
   channelData,
   streams,
+  initialCameraOn = false,
+  initialMicOn = false,
 }) => {
   const { streamingSocket } = useSocket();
+
   const [streamSettings, setStreamSettings] = useState({
     background: "linear-gradient(to bottom right, #b9328d, #4b6ef7)",
     overlay: null,
@@ -32,6 +40,9 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
   const [streamId, setStreamId] = useState<string | null>(null);
   const [isJoined, setIsJoined] = useState(false);
   const [guestRequests, setGuestRequests] = useState<any[]>([]);
+  const [participants, setParticipants] = useState<any[]>([]);
+  const [currentLayout, setCurrentLayout] = useState<string>("grid-4");
+  const localUserId = user._id;
 
   const handleSettingsChange = useCallback(
     (newSettings: any) => {
@@ -56,8 +67,19 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
         console.log("Stream update received:", data);
 
         setStreamId(data?.id);
+        setParticipants(data?.participants || []);
         setIsJoined(true);
       };
+
+      const handleParticipantJoined = (participant: any) => {
+        console.log("Participant joined:", participant);
+        setParticipants((prev) => {
+          const exists = prev.some((p) => p.userId === participant.userId);
+          return exists ? prev : [...prev, participant];
+        });
+      };
+
+      console.log(participants, "participants got ");
 
       const handleStreamSettings = (settings: any) => {
         console.log("Stream settings received in LIVESTUDIO:", settings);
@@ -78,9 +100,11 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
       streamingSocket.on("streamSettings", handleStreamSettings);
       streamingSocket.on("error", handleError);
       streamingSocket.on("guestRequest", handleGuestRequest);
+      streamingSocket.on("participantJoined", handleParticipantJoined);
 
       return () => {
         streamingSocket.off("streamUpdate", handleStreamUpdate);
+        streamingSocket.off("participantJoined", handleParticipantJoined);
         streamingSocket.off("streamSettings", handleStreamSettings);
         streamingSocket.off("error", handleError);
         streamingSocket.off("guestRequest", handleGuestRequest);
@@ -94,9 +118,9 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
     }
   }, [streamingSocket, isJoined, streamId]);
 
-  const handleApproveGuest = (request: any) => {
+  const handleApproveGuest = async (request: any) => {
     if (streamingSocket && role === "host") {
-      streamingSocket.emit("approveGuest", {
+      await streamingSocket.emitWithAck("approveGuest", {
         token: request.token,
         username: request.username,
         channelId: request.channelId,
@@ -155,80 +179,91 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
   const channelOwner: any = channelData.ownerId;
 
   return (
-    <div>
-      <div className="flex flex-col h-screen bg-[#0a172b] text-white overflow-hidden w-full">
-        <Header streams={streams} />
-        <div className="flex flex-1 overflow-hidden">
-          <Sidebar />
-          <div className="flex-1 flex flex-col overflow-hidden">
-            <StreamView streamSettings={streamSettings} />
-            <ControlBar channelId={channelData._id} streamerId={channelOwner} />
+    <DndProvider backend={HTML5Backend}>
+      <div>
+        <div className="flex flex-col h-screen bg-[#0a172b] text-white overflow-hidden w-full">
+          <Header streams={streams} />
+          <div className="flex flex-1 overflow-hidden">
+            <Sidebar />
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <StreamView
+                streamSettings={streamSettings}
+                participants={participants}
+                currentLayout={currentLayout}
+                setCurrentLayout={setCurrentLayout}
+              />
+              <ControlBar
+                channelId={channelData._id}
+                streamerId={channelOwner}
+              />
+            </div>
+            <SourcePanel
+              role={role}
+              onSettingsChange={handleSettingsChange}
+              streamId={streamId}
+            />
           </div>
-          <SourcePanel
-            onSettingsChange={handleSettingsChange}
-            streamId={streamId}
-          />
+          {/* Guest Request UI for Host */}
+          {role === "host" && guestRequests.length > 0 && (
+            <div className="fixed bottom-4 right-4 z-50 bg-zinc-800 p-4 w-96 rounded-lg border border-zinc-700">
+              <h3 className="text-white font-bold mb-2">Guest Requests</h3>
+              <AnimatePresence>
+                {guestRequests.length > 0 && (
+                  <motion.div
+                    variants={containerVariants}
+                    initial="hidden"
+                    animate="visible"
+                    className="space-y-2"
+                  >
+                    {guestRequests.map((request: any) => (
+                      <motion.div
+                        key={request.socketId}
+                        variants={itemVariants}
+                        className="flex items-center justify-between bg-zinc-800 p-3 rounded-md border border-zinc-700 shadow-sm"
+                      >
+                        <div className="flex items-center space-x-3">
+                          <motion.span
+                            initial={{ scale: 0.9 }}
+                            animate={{ scale: 1 }}
+                            transition={{ type: "spring", stiffness: 300 }}
+                            className="w-10 h-10 bg-zinc-700 rounded-full flex items-center justify-center text-gray-300"
+                          >
+                            {request.username[0].toUpperCase()}
+                          </motion.span>
+                          <span className="text-gray-300 font-medium">
+                            {request.username}
+                          </span>
+                        </div>
+
+                        <div className="flex space-x-2">
+                          <motion.button
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => handleApproveGuest(request)}
+                            className="bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 text-green-400 px-3 py-1.5 rounded-md transition-colors duration-200 flex items-center space-x-1"
+                          >
+                            <span>Approve</span>
+                          </motion.button>
+
+                          <motion.button
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => handleDenyGuest(request)}
+                            className="bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 text-red-400 px-3 py-1.5 rounded-md transition-colors duration-200 flex items-center space-x-1"
+                          >
+                            <span>Deny</span>
+                          </motion.button>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
         </div>
-        {/* Guest Request UI for Host */}
-        {role === "host" && guestRequests.length > 0 && (
-          <div className="fixed bottom-4 right-4 z-50 bg-zinc-800 p-4 w-96 rounded-lg border border-zinc-700">
-            <h3 className="text-white font-bold mb-2">Guest Requests</h3>
-            <AnimatePresence>
-              {guestRequests.length > 0 && (
-                <motion.div
-                  variants={containerVariants}
-                  initial="hidden"
-                  animate="visible"
-                  className="space-y-2"
-                >
-                  {guestRequests.map((request: any) => (
-                    <motion.div
-                      key={request.socketId}
-                      variants={itemVariants}
-                      className="flex items-center justify-between bg-zinc-800 p-3 rounded-md border border-zinc-700 shadow-sm"
-                    >
-                      <div className="flex items-center space-x-3">
-                        <motion.span
-                          initial={{ scale: 0.9 }}
-                          animate={{ scale: 1 }}
-                          transition={{ type: "spring", stiffness: 300 }}
-                          className="w-10 h-10 bg-zinc-700 rounded-full flex items-center justify-center text-gray-300"
-                        >
-                          {request.username[0].toUpperCase()}
-                        </motion.span>
-                        <span className="text-gray-300 font-medium">
-                          {request.username}
-                        </span>
-                      </div>
-
-                      <div className="flex space-x-2">
-                        <motion.button
-                          whileHover={{ scale: 1.05 }}
-                          whileTap={{ scale: 0.95 }}
-                          onClick={() => handleApproveGuest(request)}
-                          className="bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 text-green-400 px-3 py-1.5 rounded-md transition-colors duration-200 flex items-center space-x-1"
-                        >
-                          <span>Approve</span>
-                        </motion.button>
-
-                        <motion.button
-                          whileHover={{ scale: 1.05 }}
-                          whileTap={{ scale: 0.95 }}
-                          onClick={() => handleDenyGuest(request)}
-                          className="bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 text-red-400 px-3 py-1.5 rounded-md transition-colors duration-200 flex items-center space-x-1"
-                        >
-                          <span>Deny</span>
-                        </motion.button>
-                      </div>
-                    </motion.div>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        )}
       </div>
-    </div>
+    </DndProvider>
   );
 };
 

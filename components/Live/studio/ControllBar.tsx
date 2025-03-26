@@ -7,6 +7,8 @@ import {
   Plus,
   Settings,
   UserCircle2,
+  VideoOff,
+  MicOff,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSocket } from "@/hooks/useSocket";
@@ -16,6 +18,7 @@ import toast from "react-hot-toast";
 interface ControlBarProps {
   channelId?: string;
   streamerId: string;
+
 }
 
 interface Friend {
@@ -30,7 +33,6 @@ const ControlBar = ({ channelId, streamerId }: ControlBarProps) => {
   const [showFriends, setShowFriends] = useState(false);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
 
-  // RTK Query mutation hook to fetch friends
   const [getFriends, { data: friends, isLoading }] =
     useGetFrinedOfStreamerMutation();
 
@@ -66,7 +68,7 @@ const ControlBar = ({ channelId, streamerId }: ControlBarProps) => {
         toast.success(`Invite link copied to clipboard: ${link}`);
       });
 
-      streamingSocket.on("error", (error) => {
+      streamingSocket.on("error", (error: any) => {
         console.error("Socket error:", error);
       });
       return () => {
@@ -93,13 +95,19 @@ const ControlBar = ({ channelId, streamerId }: ControlBarProps) => {
     <div className="h-20 flex items-center justify-center gap-3 mb-2 relative">
       {/* Control Buttons */}
       <div className="bg-[#192b4e] rounded-full p-2 flex items-center gap-3">
-        <button className="w-11 h-11 rounded-full flex items-center justify-center bg-[#243860] hover:bg-[#2f4a7a] transition-colors">
+        <button
+          className={`w-11 h-11 rounded-full flex items-center justify-center`}
+        >
           <Mic size={20} />
         </button>
-        <button className="w-11 h-11 rounded-full flex items-center justify-center bg-[#243860] hover:bg-[#2f4a7a] transition-colors">
+        <button
+          className={`w-11 h-11 rounded-full flex items-center justify-center`}
+        >
           <Video size={20} />
         </button>
-        <button className="w-11 h-11 rounded-full flex items-center justify-center bg-[#243860] hover:bg-[#2f4a7a] transition-colors">
+        <button
+          className={`w-11 h-11 rounded-full flex items-center justify-center`}
+        >
           <MonitorSmartphone size={20} />
         </button>
         <button

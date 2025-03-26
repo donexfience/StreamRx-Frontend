@@ -39,6 +39,8 @@ export default function Page() {
   const [username, setUsername] = useState("");
   const [isWaitingForApproval, setIsWaitingForApproval] = useState(false);
   const [isApproved, setIsApproved] = useState(false);
+  const [micOn, setIsMicOn] = useState(false);
+  const [cameraOn, setCameraOn] = useState(false);
 
   const router = useRouter();
 
@@ -70,13 +72,14 @@ export default function Page() {
   const { data: channelData, isLoading: channelLoading } =
     useGetChannelByEmailQuery(users?.email, { skip: !users?.email });
 
-  // Check for guest status and verify token
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get("token");
+    let socket: any;
+
     if (token && userData?.user) {
       setIsGuest(true);
-      const socket = io("http://localhost:3011", {
+      socket = io("http://localhost:3011", {
         transports: ["websocket", "polling"],
         forceNew: true,
         reconnection: true,
@@ -84,21 +87,69 @@ export default function Page() {
         reconnectionDelay: 1000,
         timeout: 5000,
       });
-      socket.emit("verifyInvite", { token }, (response: any) => {
+
+      console.log("Socket connected:", socket.id);
+
+      // Set up streamUpdate listener before any emits
+      socket.on("streamUpdate", (data: any) => {
+        console.log(data, "data got in the streamUpdate from BE");
+        console.log(userData?.user?._id, "user data in the stream update ");
+        const isApprovedParticipant = data?.participants?.some(
+          (p: any) => p.userId === userData.user?._id
+        );
+        console.log("isApprovedParticipant:", isApprovedParticipant);
+        if (isApprovedParticipant) {
+          console.log("approved guy", userData.user?._id);
+          setIsApproved(true);
+        } else {
+          setShowUsernameModal(true);
+        }
+      });
+
+      socket.on("connect_error", (error: any) => {
+        console.error("Socket connection error:", error);
+      });
+
+      socket.on("streamUpdate", (data: any) => {
+        console.log(data, "data got in the streamUpdate from BE");
+        const isApprovedParticipant = data?.participants?.some(
+          (p: any) => p.userId === userData.user?._id
+        );
+        if (isApprovedParticipant) {
+          setIsApproved(true);
+          setIsWaitingForApproval(false);
+        } else if (!isWaitingForApproval) {
+          setShowUsernameModal(true);
+        }
+      });
+
+      socket.emit("verifyInvite", { token, username }, (response: any) => {
         if (response.success) {
           setRole("guest");
           setActiveChannelId(response.roomId);
-          setShowUsernameModal(true);
+          console.log("verifying invite successful, joining studio");
+          socket.emit("joinStudio", {
+            role: "guest",
+            user: userData?.user,
+            channelData: { _id: response.roomId },
+          });
         } else {
           toast.error("Invalid or expired invite token");
           router.push("/dashboard/streamer/main");
+          socket.disconnect();
         }
-        socket.disconnect();
       });
     } else if (!token && channelData?._id) {
       setIsGuest(false);
       setActiveChannelId(channelData._id);
     }
+
+    return () => {
+      if (socket) {
+        console.log("Socket disconnecting on cleanup");
+        socket.disconnect();
+      }
+    };
   }, [userData, channelData, router]);
 
   console.log(activeChannelId, "channel id ");
@@ -346,6 +397,8 @@ export default function Page() {
           }}
           onJoin={(inputUsername: any) => {
             setUsername(inputUsername.username);
+            setIsMicOn(inputUsername.micOn);
+            setCameraOn(inputUsername.cameraOn);
             setShowUsernameModal(false);
             setIsWaitingForApproval(true);
 
@@ -388,6 +441,8 @@ export default function Page() {
           channelData={activeChannelData}
           user={userData?.user}
           role={isGuest ? "guest" : "host"}
+          initialCameraOn={cameraOn}
+          initialMicOn={micOn}
         />
       )}
 
