@@ -1,5 +1,5 @@
 import { useSocket } from "@/hooks/useSocket";
-import React, { FC, useState, useEffect, useCallback } from "react";
+import React, { FC, useState, useEffect, useCallback, useRef } from "react";
 import Header from "./studio/Header";
 import StreamView from "./studio/StreamPreview";
 import ControlBar from "./studio/ControllBar";
@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import * as mediasoup from "mediasoup-client";
+import { Producer } from "mediasoup-client/lib/types";
+import { Device } from "mediasoup-client";
 
 interface LIVESTUDIOProps {
   role: "host" | "guest";
@@ -44,6 +46,28 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
   const [currentLayout, setCurrentLayout] = useState<string>("grid-4");
   const localUserId = user._id;
 
+  //mediasoup related states
+  const [device, setDevice] = useState<mediasoup.Device | null>(null);
+  const deviceRef = useRef<Device | null>(null);
+  const sendTransportRef = useRef<any>(null);
+  const recvTransportRef = useRef<any>(null);
+  const [localProducers, setLocalProducers] = useState<Producer[]>([]);
+  const [localTracks, setLocalTracks] = useState<{
+    webcam?: MediaStreamTrack;
+    microphone?: MediaStreamTrack;
+    screen?: MediaStreamTrack;
+  }>({});
+  const [isCameraOn, setIsCameraOn] = useState(initialCameraOn);
+  const [isMicOn, setIsMicOn] = useState(initialMicOn);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [transportsReady, setTransportsReady] = useState(false);
+  const [pendingProducers, setPendingProducers] = useState<
+    Array<{ producerId: string; producerUserId: string }>
+  >([]);
+
+  // Use ref to track transport readiness state reliably
+  const transportsReadyRef = useRef(false);
+
   const handleSettingsChange = useCallback(
     (newSettings: any) => {
       const newSettingsStr = JSON.stringify(newSettings);
@@ -58,28 +82,425 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
   );
 
   useEffect(() => {
+    if (streamingSocket && isJoined && streamId && !device) {
+      streamingSocket.emit("getMediasoupConfig", (response: any) => {
+        if (response.error) {
+          console.error(response.error);
+          return;
+        }
+        const { routerRtpCapabilities } = response;
+        const newDevice = new Device();
+        newDevice
+          .load({ routerRtpCapabilities })
+          .then(() => {
+            setDevice(newDevice);
+            deviceRef.current = newDevice;
+          })
+          .catch((err) => console.error("Device load error:", err));
+      });
+    }
+  }, [streamingSocket, isJoined, streamId, device]);
+
+  // Create transports
+  useEffect(() => {
+    if (device && streamingSocket) {
+      const createTransport = async (
+        direction: "send" | "recv",
+        setter: (t: any) => void
+      ) => {
+        return new Promise<void>((resolve) => {
+          streamingSocket.emit(
+            "createTransport",
+            direction,
+            (transportOptions: any) => {
+              if (transportOptions.error) {
+                console.error(transportOptions.error);
+                resolve();
+                return;
+              }
+              const transport =
+                direction === "send"
+                  ? device.createSendTransport(transportOptions)
+                  : device.createRecvTransport(transportOptions);
+
+              // Event handlers remain the same
+              transport.on(
+                "connect",
+                ({ dtlsParameters }, callback, errback) => {
+                  streamingSocket.emit(
+                    "connectTransport",
+                    { transportId: transport.id, dtlsParameters },
+                    (response: any) => {
+                      if (response.error) errback(response.error);
+                      else callback();
+                    }
+                  );
+                }
+              );
+
+              if (direction === "send") {
+                transport.on(
+                  "produce",
+                  ({ kind, rtpParameters, appData }, callback, errback) => {
+                    streamingSocket.emit(
+                      "produce",
+                      {
+                        transportId: transport.id,
+                        kind,
+                        rtpParameters,
+                        appData,
+                      },
+                      (response: any) => {
+                        if (response.error) errback(response.error);
+                        else callback({ id: response.id });
+                      }
+                    );
+                  }
+                );
+              }
+
+              if (direction === "send") {
+                sendTransportRef.current = transport;
+              } else {
+                recvTransportRef.current = transport;
+              }
+              console.log(`${direction} transport created:`, transport.id);
+              resolve();
+            }
+          );
+        });
+      };
+
+      const setupTransports = async () => {
+        try {
+          await createTransport("send", sendTransportRef.current);
+          await createTransport("recv", recvTransportRef.current);
+          setTransportsReady(true);
+          transportsReadyRef.current = true;
+          console.log("Both transports created");
+
+          // Process pending producers immediately using refs
+          if (pendingProducers.length > 0) {
+            console.log(
+              "Processing pending producers:",
+              pendingProducers.length
+            );
+            const producersToProcess = [...pendingProducers];
+            setPendingProducers([]);
+            producersToProcess.forEach(({ producerId, producerUserId }) => {
+              consumeProducerInternal(producerId, producerUserId);
+            });
+          }
+        } catch (error) {
+          console.error("Error setting up transports:", error);
+        }
+      };
+      setupTransports();
+    }
+  }, [device, streamingSocket, pendingProducers, transportsReadyRef]);
+
+  const consumeProducerInternal = async (
+    producerId: string,
+    producerUserId: string
+  ) => {
+    console.log(
+      `consumeProducerInternal called with producerId: ${producerId}, producerUserId: ${producerUserId}`
+    );
+
+    if (!streamingSocket || !streamingSocket.connected) {
+      console.error("Socket is not connected or undefined");
+      return;
+    }
+
+    const transport = recvTransportRef.current;
+    if (!deviceRef.current || !transport) {
+      console.log(device, transport, "device or transport is not ready");
+      console.error("Missing required objects: device or transport");
+      return;
+    }
+
+    console.log(
+      `Emitting 'consume' with transportId: ${transport.id}, producerId: ${producerId}, rtpCapabilities:`,
+      deviceRef.current.rtpCapabilities
+    );
+
+    streamingSocket.emit(
+      "consume",
+      {
+        transportId: transport.id,
+        producerId,
+        rtpCapabilities: deviceRef.current.rtpCapabilities,
+      },
+      async (response: any) => {
+        console.log("Received consume response:", response);
+        if (!response) {
+          console.error("No response received from consume event");
+          return;
+        }
+        if (response.error) {
+          console.error("Error from consume:", response.error);
+          return;
+        }
+        console.log(
+          "Consumer created with id:",
+          response.id,
+          "kind:",
+          response.kind
+        );
+
+        try {
+          const consumer = await transport.consume({
+            id: response.id,
+            producerId: response.producerId,
+            kind: response.kind,
+            rtpParameters: response.rtpParameters,
+            appData: response.appData || { type: "unknown" },
+          });
+
+          console.log("Consumer object:", consumer);
+
+          streamingSocket.emit(
+            "resumeConsumer",
+            consumer.id,
+            (resumeResponse: any) => {
+              console.log("Consumer resumed, response:", resumeResponse);
+              if (resumeResponse && resumeResponse.success) {
+                console.log(`Consumer ${consumer.id} resumed successfully`);
+              } else if (resumeResponse && resumeResponse.error) {
+                console.error(
+                  "Failed to resume consumer:",
+                  resumeResponse.error
+                );
+              } else {
+                console.warn("Unexpected resume response:", resumeResponse);
+              }
+            }
+          );
+
+          const track = consumer.track;
+          console.log("Consumer track:", track);
+          console.log(
+            `Track state: muted=${track.muted}, enabled=${track.enabled}, readyState=${track.readyState}`
+          );
+
+          //  Attach the track immediately to a MediaStream**
+          const mediaStream = new MediaStream([track]);
+
+          //  Update participants with the track and handle muted state**
+          setParticipants((prev) => {
+            const newParticipants = [...prev];
+            const idx = newParticipants.findIndex(
+              (p) => p.userId === producerUserId
+            );
+            if (idx !== -1) {
+              const participant = { ...newParticipants[idx] };
+              participant.consumers = [
+                ...participant.consumers,
+                {
+                  id: consumer.id,
+                  producerId,
+                  track,
+                  type:
+                    consumer.appData?.type ||
+                    response.appData?.type ||
+                    "unknown",
+                },
+              ];
+              newParticipants[idx] = participant;
+            } else {
+              newParticipants.push({
+                userId: producerUserId,
+                consumers: [
+                  {
+                    id: consumer.id,
+                    producerId,
+                    track,
+                    type:
+                      consumer.appData?.type ||
+                      response.appData?.type ||
+                      "unknown",
+                  },
+                ],
+              });
+            }
+            return newParticipants;
+          });
+
+          // **Change 3: Handle the muted state with an unmute event listener**
+          if (track.muted) {
+            console.log(
+              `Track ${track.id} is initially muted, waiting for unmute`
+            );
+            const onUnmute = () => {
+              console.log(`Track ${track.id} unmuted`);
+              // Optionally, trigger a re-render or state update if needed
+              track.removeEventListener("unmute", onUnmute);
+            };
+            track.addEventListener("unmute", onUnmute);
+          } else {
+            console.log(`Track ${track.id} is already unmuted and ready`);
+          }
+
+          // Ensure the track is live and log its state
+          if (track.readyState === "live") {
+            console.log(`Track ${track.id} is live and should be rendering`);
+          }
+        } catch (error) {
+          console.error("Error creating consumer:", error);
+        }
+      }
+    );
+  };
+  // Main consume function that checks readiness or queues for later
+  const consumeProducer = async (
+    producerId: string,
+    producerUserId: string
+  ) => {
+    if (!recvTransportRef.current) {
+      console.warn("Recv transport not ready, queuing producer");
+      setPendingProducers((prev) => [...prev, { producerId, producerUserId }]);
+      return;
+    }
+    consumeProducerInternal(producerId, producerUserId);
+  };
+
+  // Media control functions
+  const enableCamera = async () => {
+    if (!device || !sendTransportRef.current || !streamingSocket) return;
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    const track = stream.getVideoTracks()[0];
+    const producer = await sendTransportRef.current.produce({
+      track,
+      appData: { type: "webcam" },
+    });
+    setLocalProducers((prev) => [...prev, producer]);
+    setLocalTracks((prev) => ({ ...prev, webcam: track }));
+    setIsCameraOn(true);
+  };
+  const disableCamera = () => {
+    const producer = localProducers.find((p) => p.appData.type === "webcam");
+    if (producer) {
+      producer.close();
+      if (producer.track) producer.track.stop();
+      streamingSocket?.emit("closeProducer", { producerId: producer.id });
+      setLocalProducers((prev) => prev.filter((p) => p.id !== producer.id));
+      setLocalTracks((prev) => ({ ...prev, webcam: undefined }));
+      setIsCameraOn(false);
+    }
+  };
+
+  const enableMicrophone = async () => {
+    if (!device || !sendTransportRef.current || !streamingSocket) return;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const track = stream.getAudioTracks()[0];
+    const producer = await sendTransportRef.current.produce({
+      track,
+      appData: { type: "microphone" },
+    });
+    setLocalProducers((prev) => [...prev, producer]);
+    setLocalTracks((prev) => ({ ...prev, microphone: track }));
+    setIsMicOn(true);
+  };
+
+  const disableMicrophone = () => {
+    const producer = localProducers.find(
+      (p) => p.appData.type === "microphone"
+    );
+    if (producer) {
+      producer.close();
+      if (producer.track) {
+        producer.track.stop();
+        streamingSocket?.emit("closeProducer", { producerId: producer.id });
+        setLocalProducers((prev) => prev.filter((p) => p.id !== producer.id));
+        setLocalTracks((prev) => ({ ...prev, microphone: undefined }));
+        setIsMicOn(false);
+      }
+    }
+  };
+
+  const startScreenSharing = async () => {
+    if (!device || !sendTransportRef.current || !streamingSocket) return;
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+      video: true,
+    });
+    const track = stream.getVideoTracks()[0];
+    track.onended = stopScreenSharing;
+    const producer = await sendTransportRef.current.produce({
+      track,
+      appData: { type: "screen" },
+    });
+    setLocalProducers((prev) => [...prev, producer]);
+    setLocalTracks((prev) => ({ ...prev, screen: track }));
+    setIsScreenSharing(true);
+  };
+
+  const stopScreenSharing = () => {
+    const producer = localProducers.find((p) => p.appData.type === "screen");
+    if (producer) {
+      producer.close();
+      if (producer && producer.track) {
+        producer.track.stop();
+        streamingSocket?.emit("closeProducer", { producerId: producer.id });
+        setLocalProducers((prev) => prev.filter((p) => p.id !== producer.id));
+        setLocalTracks((prev) => ({ ...prev, screen: undefined }));
+        setIsScreenSharing(false);
+      }
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      localProducers.forEach((producer) => {
+        if (producer.track) {
+          producer.track.stop();
+        }
+        streamingSocket?.emit("closeProducer", { producerId: producer.id });
+      });
+    };
+  }, [localProducers, streamingSocket]);
+
+  useEffect(() => {
     if (streamingSocket) {
       console.log("Streaming socket is connected in liveStudio");
 
       streamingSocket.emit("joinStudio", { role, user, channelData });
-
       const handleStreamUpdate = (data: any) => {
         console.log("Stream update received:", data);
-
         setStreamId(data?.id);
-        setParticipants(data?.participants || []);
+        setParticipants(
+          (data?.participants || []).map((p: any) => ({
+            ...p,
+            consumers: p.consumers || [],
+          }))
+        );
         setIsJoined(true);
       };
-
       const handleParticipantJoined = (participant: any) => {
         console.log("Participant joined:", participant);
         setParticipants((prev) => {
           const exists = prev.some((p) => p.userId === participant.userId);
-          return exists ? prev : [...prev, participant];
+          if (!exists) {
+            return [
+              ...prev,
+              { ...participant, consumers: participant.consumers || [] },
+            ];
+          }
+          return prev;
         });
       };
 
       console.log(participants, "participants got ");
+
+      const handleExistingProducers = (
+        producers: Array<{ producerId: string; producerUserId: string }>
+      ) => {
+        console.log("Received existing producers:", producers);
+        producers.forEach(({ producerId, producerUserId }) => {
+          if (producerUserId !== localUserId) {
+            consumeProducer(producerId, producerUserId);
+          }
+        });
+      };
 
       const handleStreamSettings = (settings: any) => {
         console.log("Stream settings received in LIVESTUDIO:", settings);
@@ -96,21 +517,62 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
         }
       };
 
+      const handleNewProducer = ({
+        producerId,
+        producerUserId,
+      }: {
+        producerId: string;
+        producerUserId: string;
+      }) => {
+        if (producerUserId !== localUserId) {
+          console.log(
+            "New producer added: event got from backend",
+            producerId,
+            producerUserId
+          );
+          consumeProducer(producerId, producerUserId);
+        }
+      };
+
+      const handleProducerClosed = ({ producerId }: { producerId: string }) => {
+        setParticipants((prev) =>
+          prev.map((p) => ({
+            ...p,
+            consumers: p.consumers.filter(
+              (c: any) => c.producerId !== producerId
+            ),
+          }))
+        );
+      };
+
       streamingSocket.on("streamUpdate", handleStreamUpdate);
       streamingSocket.on("streamSettings", handleStreamSettings);
       streamingSocket.on("error", handleError);
       streamingSocket.on("guestRequest", handleGuestRequest);
       streamingSocket.on("participantJoined", handleParticipantJoined);
+      streamingSocket.on("newProducer", handleNewProducer);
+      streamingSocket.on("producerClosed", handleProducerClosed);
+      streamingSocket.on("existingProducers", handleExistingProducers);
 
       return () => {
         streamingSocket.off("streamUpdate", handleStreamUpdate);
         streamingSocket.off("participantJoined", handleParticipantJoined);
         streamingSocket.off("streamSettings", handleStreamSettings);
         streamingSocket.off("error", handleError);
+        streamingSocket.off("newProducer", handleNewProducer);
+        streamingSocket.off("producerClosed", handleProducerClosed);
         streamingSocket.off("guestRequest", handleGuestRequest);
+        streamingSocket.off("existingProducers", handleExistingProducers);
       };
     }
-  }, [streamingSocket, role, user, channelData, handleSettingsChange]);
+  }, [
+    streamingSocket,
+    role,
+    user,
+    channelData,
+    handleSettingsChange,
+    localUserId,
+  ]);
 
   useEffect(() => {
     if (streamingSocket && isJoined && streamId) {
@@ -191,10 +653,24 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
                 participants={participants}
                 currentLayout={currentLayout}
                 setCurrentLayout={setCurrentLayout}
+                localuserId={localUserId}
+                localTracks={localTracks}
               />
               <ControlBar
                 channelId={channelData._id}
-                streamerId={channelOwner}
+                streamerId={channelData.ownerId}
+                isCameraOn={isCameraOn}
+                toggleCamera={() =>
+                  isCameraOn ? disableCamera() : enableCamera()
+                }
+                isMicOn={isMicOn}
+                toggleMicrophone={() =>
+                  isMicOn ? disableMicrophone() : enableMicrophone()
+                }
+                isScreenSharing={isScreenSharing}
+                toggleScreenSharing={() =>
+                  isScreenSharing ? stopScreenSharing() : startScreenSharing()
+                }
               />
             </div>
             <SourcePanel

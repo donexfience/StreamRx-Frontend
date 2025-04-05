@@ -18,7 +18,12 @@ import toast from "react-hot-toast";
 interface ControlBarProps {
   channelId?: string;
   streamerId: string;
-
+  isCameraOn: boolean;
+  toggleCamera: () => void;
+  isMicOn: boolean;
+  toggleMicrophone: () => void;
+  isScreenSharing: boolean;
+  toggleScreenSharing: () => void;
 }
 
 interface Friend {
@@ -28,7 +33,16 @@ interface Friend {
   status?: "online" | "offline" | "busy";
 }
 
-const ControlBar = ({ channelId, streamerId }: ControlBarProps) => {
+const ControlBar = ({
+  channelId,
+  streamerId,
+  isCameraOn,
+  isMicOn,
+  isScreenSharing,
+  toggleCamera,
+  toggleMicrophone,
+  toggleScreenSharing,
+}: ControlBarProps) => {
   const { streamingSocket } = useSocket();
   const [showFriends, setShowFriends] = useState(false);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
@@ -36,7 +50,6 @@ const ControlBar = ({ channelId, streamerId }: ControlBarProps) => {
   const [getFriends, { data: friends, isLoading }] =
     useGetFrinedOfStreamerMutation();
 
-  console.log(friends?.user, "friends got in the controllbar for debug");
 
   useEffect(() => {
     if (showFriends) {
@@ -96,17 +109,26 @@ const ControlBar = ({ channelId, streamerId }: ControlBarProps) => {
       {/* Control Buttons */}
       <div className="bg-[#192b4e] rounded-full p-2 flex items-center gap-3">
         <button
-          className={`w-11 h-11 rounded-full flex items-center justify-center`}
+          className={`w-11 h-11 rounded-full flex items-center justify-center ${
+            isMicOn ? "bg-blue-500" : "bg-[#243860] hover:bg-[#2f4a7a]"
+          }`}
+          onClick={toggleMicrophone}
         >
-          <Mic size={20} />
+          {isMicOn ? <Mic size={20} /> : <MicOff size={20} />}
         </button>
         <button
-          className={`w-11 h-11 rounded-full flex items-center justify-center`}
+          className={`w-11 h-11 rounded-full flex items-center justify-center ${
+            isCameraOn ? "bg-blue-500" : "bg-[#243860] hover:bg-[#2f4a7a]"
+          }`}
+          onClick={toggleCamera}
         >
-          <Video size={20} />
+          {isCameraOn ? <Video size={20} /> : <VideoOff size={20} />}
         </button>
         <button
-          className={`w-11 h-11 rounded-full flex items-center justify-center`}
+          className={`w-11 h-11 rounded-full flex items-center justify-center ${
+            isScreenSharing ? "bg-green-500" : "bg-[#243860] hover:bg-[#2f4a7a]"
+          }`}
+          onClick={toggleScreenSharing}
         >
           <MonitorSmartphone size={20} />
         </button>
