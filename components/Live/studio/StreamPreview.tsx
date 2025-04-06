@@ -53,24 +53,84 @@ const StreamView: React.FC<StreamViewProps> = ({
   const [showParticipantSelector, setShowParticipantSelector] = useState(false);
   const [autoplayEnabled, setAutoplayEnabled] = useState(false);
 
-  useEffect(() => {
-    // Store handlers for removal during cleanup
-    const handlers: { [key: string]: EventListener } = {};
+  // Store all media elements that need to be played after user interaction
+  const pendingMediaElements = useRef<HTMLMediaElement[]>([]);
+  // Store all pending play promises to avoid interruptions
+  const pendingPlayPromises = useRef<Map<HTMLMediaElement, Promise<void>>>(new Map());
 
-    // Function to enable autoplay
+  // Function to play all pending media elements
+  const playAllPendingMedia = useCallback(async () => {
+    if (!autoplayEnabled || pendingMediaElements.current.length === 0) return;
+
+    console.log(
+      `Attempting to play ${pendingMediaElements.current.length} pending media elements`
+    );
+
+    // Create a copy of the current pending elements and clear the original array
+    const elements = [...pendingMediaElements.current];
+    pendingMediaElements.current = [];
+
+    // Try to play each element
+    for (const element of elements) {
+      try {
+        // Check if the element is still in the DOM
+        if (element.isConnected) {
+          // Make sure we're not interrupting an existing play promise
+          if (!pendingPlayPromises.current.has(element)) {
+            const playPromise = element.play();
+            if (playPromise !== undefined) {
+              // Store the pending promise
+              pendingPlayPromises.current.set(element, playPromise);
+              
+              // When the promise completes, remove it from our map and unmute
+              playPromise
+                .then(() => {
+                  pendingPlayPromises.current.delete(element);
+                  // Only unmute audio elements (keep video muted for privacy)
+                  if (element.tagName === 'AUDIO') {
+                    element.muted = false;
+                  }
+                  console.log("Successfully played media element", element);
+                })
+                .catch(error => {
+                  pendingPlayPromises.current.delete(element);
+                  console.warn("Failed to play media element", error);
+                  // If play fails, add back to pending list
+                  pendingMediaElements.current.push(element);
+                });
+            }
+          } else {
+            console.log("Play already in progress for element", element);
+          }
+        }
+      } catch (error) {
+        console.warn("Error setting up play promise", error);
+        // If setup fails, add back to pending list
+        pendingMediaElements.current.push(element);
+      }
+    }
+  }, [autoplayEnabled]);
+
+  useEffect(() => {
+    // Function to enable autoplay and play pending media
     const enableAutoplay = () => {
       setAutoplayEnabled(true);
+      // Schedule playing pending media after state update
+      setTimeout(playAllPendingMedia, 0);
     };
 
-    // Create named event handlers (for proper cleanup)
-    handlers.click = enableAutoplay;
-    handlers.touchstart = enableAutoplay;
-    handlers.keydown = enableAutoplay;
+    // Create handler for user interaction
+    const handleUserInteraction = () => {
+      if (!autoplayEnabled) {
+        console.log("User interaction detected. Enabling autoplay.");
+        enableAutoplay();
+      }
+    };
 
     // Add global interaction listeners
-    document.addEventListener("click", handlers.click);
-    document.addEventListener("touchstart", handlers.touchstart);
-    document.addEventListener("keydown", handlers.keydown);
+    document.addEventListener("click", handleUserInteraction);
+    document.addEventListener("touchstart", handleUserInteraction);
+    document.addEventListener("keydown", handleUserInteraction);
 
     // Check if autoplay is already enabled
     const checkAutoplayStatus = async () => {
@@ -97,16 +157,23 @@ const StreamView: React.FC<StreamViewProps> = ({
       }
     };
 
-    // Run the check
+    // Run the autoplay check
     checkAutoplayStatus();
 
-    // Clean up all event listeners on unmount
     return () => {
-      document.removeEventListener("click", handlers.click);
-      document.removeEventListener("touchstart", handlers.touchstart);
-      document.removeEventListener("keydown", handlers.keydown);
+      document.removeEventListener("click", handleUserInteraction);
+      document.removeEventListener("touchstart", handleUserInteraction);
+      document.removeEventListener("keydown", handleUserInteraction);
     };
-  }, []);
+  }, [autoplayEnabled, playAllPendingMedia]);
+
+  // Trigger playing pending media elements when autoplay becomes enabled
+  useEffect(() => {
+    if (autoplayEnabled) {
+      playAllPendingMedia();
+    }
+  }, [autoplayEnabled, playAllPendingMedia]);
+
   useEffect(() => {
     let initialGridSize;
     switch (currentLayout) {
@@ -190,6 +257,49 @@ const StreamView: React.FC<StreamViewProps> = ({
     }
   }, [currentLayout]);
 
+  // Function to properly handle playing media elements
+  const safePlayMedia = useCallback(
+    async (element: HTMLMediaElement) => {
+      if (!autoplayEnabled) {
+        // If autoplay not enabled, add to pending list
+        pendingMediaElements.current.push(element);
+        return;
+      }
+
+      // Make sure we don't have a play already pending for this element
+      if (pendingPlayPromises.current.has(element)) {
+        console.log("Play already in progress for element");
+        return;
+      }
+
+      try {
+        const playPromise = element.play();
+        if (playPromise !== undefined) {
+          // Store the pending promise
+          pendingPlayPromises.current.set(element, playPromise);
+          
+          await playPromise;
+          console.log("Successfully played media element");
+          
+          // Only unmute audio (keep video muted for privacy/feedback)
+          if (element.tagName === 'AUDIO') {
+            element.muted = false;
+          }
+        }
+      } catch (error) {
+        console.warn("Failed to play media element", error);
+        // Add to pending elements to try again later
+        if (!pendingMediaElements.current.includes(element)) {
+          pendingMediaElements.current.push(element);
+        }
+      } finally {
+        // Clean up the promise reference
+        pendingPlayPromises.current.delete(element);
+      }
+    },
+    [autoplayEnabled]
+  );
+
   const DraggableParticipant = React.memo(
     ({
       participant,
@@ -209,312 +319,163 @@ const StreamView: React.FC<StreamViewProps> = ({
       const [{ isDragging }, drag] = useDrag(() => ({
         type: "participant",
         item: { participant, index },
-        collect: (monitor) => ({
-          isDragging: monitor.isDragging(),
-        }),
+        collect: (monitor) => ({ isDragging: monitor.isDragging() }),
       }));
       const [isTalking, setIsTalking] = useState(false);
-      const [videoPlaying, setVideoPlaying] = useState(false);
-      const [screenPlaying, setScreenPlaying] = useState(false);
-      const [audioPlaying, setAudioPlaying] = useState(false);
-      const [showPlayButton, setShowPlayButton] = useState(false);
-
-      const isLocal = participant?.userId === localuserId;
+      const isLocal = participant.userId === localuserId;
       const videoConsumer =
-        participant?.consumers?.find((c) => c.type === "webcam") || null;
+        participant.consumers.find((c) => c.type === "webcam") || null;
       const screenConsumer =
-        participant?.consumers?.find((c) => c.type === "screen") || null;
+        participant.consumers.find((c) => c.type === "screen") || null;
       const audioConsumer =
-        participant?.consumers?.find((c) => c.type === "microphone") || null;
-
-      const videoRef = useRef<HTMLVideoElement>(null);
-      const screenRef = useRef<HTMLVideoElement>(null);
-      const audioRef = useRef<HTMLAudioElement>(null);
-      const audioAnalyserRef = useRef<AnalyserNode | null>(null);
-      const animationFrameRef = useRef<number | null>(null);
-
+        participant.consumers.find((c) => c.type === "microphone") || null;
       const hasScreenShare = isLocal ? !!localTracks.screen : !!screenConsumer;
       const hasWebcam = isLocal ? !!localTracks.webcam : !!videoConsumer;
 
-      // Completely rewritten function to safely handle media playback
-      const attachStreamToElement = useCallback(
-        async (
-          element: HTMLVideoElement | HTMLAudioElement | null,
-          track: MediaStreamTrack | undefined,
-          type: "video" | "screen" | "audio"
-        ) => {
-          if (!element || !track) return false;
+      // Refs for dynamically created elements
+      const participantContainerRef = useRef<HTMLDivElement>(null);
+      const videoElRef = useRef<HTMLVideoElement | null>(null);
+      const screenElRef = useRef<HTMLVideoElement | null>(null);
+      const audioElRef = useRef<HTMLAudioElement | null>(null);
 
-          try {
-            // Clean up existing stream properly
-            if (element.srcObject instanceof MediaStream) {
-              const existingStream = element.srcObject as MediaStream;
-              existingStream.getTracks().forEach((t) => t.stop());
-            }
-
-            // Create a new stream with the track and make sure it's enabled
-            const stream = new MediaStream();
-            track.enabled = true;
-            stream.addTrack(track);
-
-            // Set the stream to the element
-            element.srcObject = stream;
-
-            // Set muted status - always mute video to avoid feedback
-            if (element instanceof HTMLVideoElement) {
-              element.muted = true;
-            } else if (isLocal && element instanceof HTMLAudioElement) {
-              element.muted = true;
-            }
-
-            // Create a promise to handle the play attempt
-            const tryPlay = async () => {
-              try {
-                await element.play();
-                console.log(`${type} playback started successfully`);
-                if (type === "video") setVideoPlaying(true);
-                if (type === "screen") setScreenPlaying(true);
-                if (type === "audio") setAudioPlaying(true);
-                setShowPlayButton(false);
-                return true;
-              } catch (playError: any) {
-                if (playError.name === "AbortError") {
-                  console.log(
-                    `${type} play request interrupted, likely due to stream update`
-                  );
-                  return false;
-                } else {
-                  console.warn(`${type} autoplay blocked:`, playError);
-                  setShowPlayButton(true);
-                  return false;
-                }
-              }
-            };
-
-            // Wait for metadata to load before attempting playback
-            element.onloadedmetadata = async () => {
-              if (autoplayEnabled) {
-                await tryPlay();
-              } else {
-                setShowPlayButton(true);
-              }
-            };
-
-            // Handle errors
-            element.onerror = (e) => {
-              console.error(`Media element ${type} error:`, e);
-              setShowPlayButton(true);
-            };
-
-            return true;
-          } catch (error) {
-            console.error(`Error attaching ${type} stream:`, error);
-            setShowPlayButton(true);
-            return false;
-          }
-        },
-        [isLocal, autoplayEnabled]
-      );
-
-      // Set up media streams with improved error handling
+      // Setup media streams using DOM methods
       useEffect(() => {
-        let audioContext: AudioContext | null = null;
+        if (!participantContainerRef.current) return;
 
-        const setup = async () => {
-          // Handle webcam
-          if (isLocal && localTracks.webcam) {
-            await attachStreamToElement(
-              videoRef.current,
-              localTracks.webcam,
-              "video"
-            );
-          } else if (videoConsumer?.track) {
-            await attachStreamToElement(
-              videoRef.current,
-              videoConsumer.track,
-              "video"
-            );
-          }
-
-          // Handle screen share
-          if (isLocal && localTracks.screen) {
-            await attachStreamToElement(
-              screenRef.current,
-              localTracks.screen,
-              "screen"
-            );
-          } else if (screenConsumer?.track) {
-            await attachStreamToElement(
-              screenRef.current,
-              screenConsumer.track,
-              "screen"
-            );
-          }
-
-          // Handle audio with analyzer
-          if (!isLocal && audioConsumer?.track) {
-            await attachStreamToElement(
-              audioRef.current,
-              audioConsumer.track,
-              "audio"
-            );
-
-            try {
-              // Set up audio analyzer if we have audio
-              if (audioRef.current && audioRef.current.srcObject) {
-                audioContext = new AudioContext();
-                const stream = audioRef.current.srcObject as MediaStream;
-                const audioSource =
-                  audioContext.createMediaStreamSource(stream);
-                const analyser = audioContext.createAnalyser();
-                analyser.fftSize = 256;
-                audioSource.connect(analyser);
-                audioAnalyserRef.current = analyser;
-
-                // Start audio level detection
-                const dataArray = new Uint8Array(analyser.frequencyBinCount);
-                const checkAudioLevel = () => {
-                  if (!analyser) return;
-                  analyser.getByteFrequencyData(dataArray);
-                  const average =
-                    dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
-                  setIsTalking(average > 30); // Threshold
-                  animationFrameRef.current =
-                    requestAnimationFrame(checkAudioLevel);
-                };
-                checkAudioLevel();
-              }
-            } catch (error) {
-              console.error("Audio analyzer setup error:", error);
+        // Cleanup existing elements
+        const cleanupExisting = () => {
+          // Properly clean up any pending play promises
+          if (videoElRef.current) {
+            pendingPlayPromises.current.delete(videoElRef.current);
+            videoElRef.current.srcObject = null;
+            if (videoElRef.current.parentNode) {
+              videoElRef.current.parentNode.removeChild(videoElRef.current);
             }
+            videoElRef.current = null;
+          }
+          if (screenElRef.current) {
+            pendingPlayPromises.current.delete(screenElRef.current);
+            screenElRef.current.srcObject = null;
+            if (screenElRef.current.parentNode) {
+              screenElRef.current.parentNode.removeChild(screenElRef.current);
+            }
+            screenElRef.current = null;
+          }
+          if (audioElRef.current) {
+            pendingPlayPromises.current.delete(audioElRef.current);
+            audioElRef.current.srcObject = null;
+            if (audioElRef.current.parentNode) {
+              audioElRef.current.parentNode.removeChild(audioElRef.current);
+            }
+            audioElRef.current = null;
           }
         };
 
-        setup();
+        cleanupExisting();
 
-        // Local audio visualization simulation
-        let talkingInterval: ReturnType<typeof setInterval> | null = null;
-        if (isLocal && localTracks.microphone) {
-          talkingInterval = setInterval(() => {
-            setIsTalking((prev) => !prev);
-          }, 2000);
+        // Setup webcam
+        if (hasWebcam) {
+          const videoEl = document.createElement("video");
+          videoEl.autoplay = false; // Don't autoplay initially
+          videoEl.playsInline = true;
+          videoEl.muted = true; // Always mute initially
+          videoEl.className = "w-full h-full object-cover";
+          const stream =
+            isLocal && localTracks.webcam
+              ? new MediaStream([localTracks.webcam])
+              : videoConsumer
+              ? new MediaStream([videoConsumer.track])
+              : null;
+          if (stream) {
+            videoEl.srcObject = stream;
+            participantContainerRef.current.appendChild(videoEl);
+            videoElRef.current = videoEl;
+
+            // Handle playback with promise management
+            safePlayMedia(videoEl);
+          }
         }
 
-        // Enhanced cleanup function
+        // Setup screen share
+        if (hasScreenShare) {
+          const screenEl = document.createElement("video");
+          screenEl.autoplay = false; // Don't autoplay initially
+          screenEl.playsInline = true;
+          screenEl.muted = true; // Always mute initially
+          screenEl.className = "w-full h-full object-contain";
+          const stream =
+            isLocal && localTracks.screen
+              ? new MediaStream([localTracks.screen])
+              : screenConsumer
+              ? new MediaStream([screenConsumer.track])
+              : null;
+          if (stream) {
+            screenEl.srcObject = stream;
+            participantContainerRef.current.appendChild(screenEl);
+            screenElRef.current = screenEl;
+
+            // Handle playback with promise management
+            safePlayMedia(screenEl);
+          }
+        }
+
+        // Setup audio for remote participants
+        if (!isLocal && audioConsumer) {
+          const audioEl = document.createElement("audio");
+          audioEl.autoplay = false; // Don't autoplay initially
+          audioEl.playsInline = true;
+          audioEl.muted = true; // Start muted, will unmute after play succeeds
+          audioEl.style.display = "none";
+          const stream = new MediaStream([audioConsumer.track]);
+          audioEl.srcObject = stream;
+          document.body.appendChild(audioEl);
+          audioElRef.current = audioEl;
+
+          // Handle playback with promise management
+          safePlayMedia(audioEl);
+        }
+
+        // Cleanup on unmount
         return () => {
-          // Cancel animation frame
-          if (animationFrameRef.current) {
-            cancelAnimationFrame(animationFrameRef.current);
-            animationFrameRef.current = null;
+          cleanupExisting();
+          if (hasWebcam && videoElRef.current?.srcObject) {
+            (videoElRef.current.srcObject as MediaStream)
+              .getTracks()
+              .forEach((track) => track.stop());
           }
-
-          // Clear talking interval
-          if (talkingInterval) {
-            clearInterval(talkingInterval);
+          if (hasScreenShare && screenElRef.current?.srcObject) {
+            (screenElRef.current.srcObject as MediaStream)
+              .getTracks()
+              .forEach((track) => track.stop());
           }
-
-          // Close audio context
-          if (audioContext) {
-            audioContext.close().catch(console.error);
+          if (!isLocal && audioConsumer && audioElRef.current?.srcObject) {
+            (audioElRef.current.srcObject as MediaStream)
+              .getTracks()
+              .forEach((track) => track.stop());
           }
-
-          // Safely clean up video and audio elements
-          [videoRef.current, screenRef.current, audioRef.current].forEach(
-            (element) => {
-              if (element) {
-                // Remove event listeners
-                element.onloadedmetadata = null;
-
-                try {
-                  // Pause playback
-                  element.pause();
-
-                  // Stop all tracks in the stream
-                  if (element.srcObject instanceof MediaStream) {
-                    const stream = element.srcObject as MediaStream;
-                    stream.getTracks().forEach((track) => {
-                      track.stop();
-                    });
-                  }
-
-                  // Clear the source
-                  element.srcObject = null;
-                } catch (e) {
-                  console.error("Cleanup error:", e);
-                }
-              }
-            }
-          );
         };
       }, [
+        hasWebcam,
+        hasScreenShare,
         isLocal,
         localTracks.webcam,
         localTracks.screen,
-        localTracks.microphone,
         videoConsumer,
         screenConsumer,
         audioConsumer,
-        attachStreamToElement,
-        autoplayEnabled,
+        safePlayMedia,
       ]);
 
-      // Improved manual play handler for user interaction
-      const handleManualPlay = async () => {
-        try {
-          // Attempt to enable autoplay globally
-          setAutoplayEnabled(true);
-
-          const mediaElements = [
-            { element: videoRef.current, type: "video" as const },
-            { element: screenRef.current, type: "screen" as const },
-            { element: audioRef.current, type: "audio" as const },
-          ].filter((item) => item.element && item.element.srcObject);
-
-          for (const { element, type } of mediaElements) {
-            if (element && element.paused && element.srcObject) {
-              try {
-                await element.play();
-                console.log(`${type} playback started manually`);
-                if (type === "video") setVideoPlaying(true);
-                if (type === "screen") setScreenPlaying(true);
-                if (type === "audio") setAudioPlaying(true);
-              } catch (playError) {
-                console.error(`Error playing ${type}:`, playError);
-
-                // For some browsers, we need to retry after user interaction
-                if (playError.name === "NotAllowedError") {
-                  console.log(`Retry ${type} playback after interaction`);
-
-                  // Schedule a retry with a slight delay
-                  setTimeout(async () => {
-                    try {
-                      await element.play();
-                      if (type === "video") setVideoPlaying(true);
-                      if (type === "screen") setScreenPlaying(true);
-                      if (type === "audio") setAudioPlaying(true);
-                    } catch (retryError) {
-                      console.error(`Retry failed for ${type}:`, retryError);
-                    }
-                  }, 100);
-                }
-              }
-            }
-          }
-
-          // Hide play button after manual interaction
-          setShowPlayButton(false);
-        } catch (error) {
-          console.error("Manual play error:", error);
-        }
-      };
-
-      // Attempt to play videos whenever autoplay status changes
+      // Simple talking indicator for local user
       useEffect(() => {
-        if (autoplayEnabled) {
-          // Try to play all media elements when autoplay becomes enabled
-          handleManualPlay();
+        if (isLocal && localTracks.microphone) {
+          const interval = setInterval(
+            () => setIsTalking((prev) => !prev),
+            2000
+          );
+          return () => clearInterval(interval);
         }
-      }, [autoplayEnabled]);
+      }, [isLocal, localTracks.microphone]);
 
       return (
         <div
@@ -522,48 +483,21 @@ const StreamView: React.FC<StreamViewProps> = ({
           style={{ opacity: isDragging ? 0.5 : 1 }}
           className="w-full h-full bg-gray-800/90 rounded-lg border border-gray-700/50 overflow-hidden cursor-move"
         >
-          <div className="w-full h-full bg-gray-800 flex flex-col relative">
-            {hasScreenShare && (
-              <div className="flex-1 w-full relative">
-                <video
-                  ref={screenRef}
-                  playsInline
-                  muted={true}
-                  className="w-full h-full object-contain"
-                />
-                {hasWebcam && (
-                  <div className="absolute top-2 right-2 w-1/4 h-1/4 z-10 rounded-lg overflow-hidden border-2 border-gray-700">
-                    <video
-                      ref={videoRef}
-                      playsInline
-                      muted={true}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-            {!hasScreenShare && (
+          <div
+            ref={participantContainerRef}
+            className="w-full h-full bg-gray-800 flex flex-col relative"
+          >
+            {!hasScreenShare && !hasWebcam && (
               <div className="flex-1 w-full flex items-center justify-center">
-                {hasWebcam ? (
-                  <video
-                    ref={videoRef}
-                    playsInline
-                    muted={true}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div
-                    className={`flex items-center justify-center w-24 h-24 rounded-full bg-indigo-600 text-3xl font-bold text-white transition-transform ${
-                      isTalking ? "animate-pulse scale-110" : ""
-                    }`}
-                  >
-                    {participant.username?.[0]?.toUpperCase() || "?"}
-                  </div>
-                )}
+                <div
+                  className={`flex items-center justify-center w-24 h-24 rounded-full bg-indigo-600 text-3xl font-bold text-white transition-transform ${
+                    isTalking ? "animate-pulse scale-110" : ""
+                  }`}
+                >
+                  {participant.username?.[0]?.toUpperCase() || "?"}
+                </div>
               </div>
             )}
-            {!isLocal && audioConsumer && <audio ref={audioRef} playsInline />}
             {participant.role === "host" && (
               <div className="absolute top-2 left-2 bg-yellow-500/20 rounded-full p-1.5">
                 <Crown size={16} className="text-yellow-400" />
@@ -574,7 +508,7 @@ const StreamView: React.FC<StreamViewProps> = ({
                 {[...Array(3)].map((_, i) => (
                   <div
                     key={i}
-                    className={`w-1.5 h-6 bg-green-400 rounded-full animate-bounce`}
+                    className="w-1.5 h-6 bg-green-400 rounded-full animate-bounce"
                     style={{ animationDelay: `${i * 0.2}s` }}
                   />
                 ))}
@@ -584,26 +518,17 @@ const StreamView: React.FC<StreamViewProps> = ({
               {participant.username}
               {isLocal && " (You)"}
             </div>
-            {showPlayButton && (
-              <button
-                onClick={handleManualPlay}
-                className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-full flex items-center justify-center z-10"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                </svg>
-                <span className="ml-2">Click to Play Media</span>
-              </button>
+            {!isLocal && !autoplayEnabled && (hasWebcam || hasScreenShare) && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/70">
+                <div className="bg-black/80 p-3 rounded-lg">
+                  <button
+                    className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md"
+                    onClick={() => setAutoplayEnabled(true)}
+                  >
+                    Click to Play
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         </div>
@@ -731,7 +656,7 @@ const StreamView: React.FC<StreamViewProps> = ({
           </h3>
           <p className="text-white/70 text-center max-w-md mb-6">
             Your browser requires user interaction before playing media. Click
-            anywhere on this page to enable streaming.
+            the button below to enable streaming.
           </p>
           <button
             onClick={() => setAutoplayEnabled(true)}
