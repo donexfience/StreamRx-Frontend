@@ -1,14 +1,33 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import { Maximize2, Crown, PlusIcon } from "lucide-react";
 import LayoutSelector from "./LayoutController";
 import { motion } from "framer-motion";
 import { useDrag, useDrop } from "react-dnd";
 import * as mediasoup from "mediasoup-client";
 
+interface Producer {
+  id: string;
+  track: MediaStreamTrack;
+  type: "webcam" | "microphone" | "screen";
+}
+
+interface Consumer {
+  id: string;
+  producerId: string;
+  consumer: any;
+  track: MediaStreamTrack;
+  producerSocketId: string;
+}
+
 interface Participant {
-  userId: string;
-  username: string;
-  role: string;
+  socketId: string;
+  userId?: string;
+  username?: string;
+  role?: string;
+  consumers: Consumer[];
+  videoEl?: HTMLVideoElement;
+  audioEl?: HTMLAudioElement;
+  screenEl?: HTMLVideoElement;
 }
 
 interface StreamViewProps {
@@ -16,6 +35,9 @@ interface StreamViewProps {
   participants: Participant[];
   currentLayout: string;
   setCurrentLayout: (layout: string) => void;
+  localStreams: Producer[];
+  isCameraOn: boolean;
+  isScreenSharing: boolean;
 }
 
 const StreamView: React.FC<StreamViewProps> = ({
@@ -23,6 +45,9 @@ const StreamView: React.FC<StreamViewProps> = ({
   participants,
   currentLayout,
   setCurrentLayout,
+  localStreams,
+  isCameraOn,
+  isScreenSharing,
 }) => {
   const {
     background = "linear-gradient(to bottom right, #b9328d, #4b6ef7)",
@@ -39,6 +64,8 @@ const StreamView: React.FC<StreamViewProps> = ({
     Participant[]
   >([]);
   const [showParticipantSelector, setShowParticipantSelector] = useState(false);
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const localScreenRef = useRef<HTMLVideoElement>(null);
 
   // Initialize grid based on layout
   React.useEffect(() => {
@@ -59,13 +86,70 @@ const StreamView: React.FC<StreamViewProps> = ({
       default:
         initialGridSize = 4;
     }
+    const localParticipant: Participant = {
+      socketId: "local",
+      userId: "local",
+      username: "You",
+      role: "host",
+      consumers: [],
+    };
+    const allParticipants = [localParticipant, ...participants];
     const initialGrid = participants.slice(0, initialGridSize).map((p) => p);
     const initialRemaining = participants.slice(initialGridSize);
     setGridParticipants(
       initialGrid.concat(Array(initialGridSize - initialGrid.length).fill(null))
     );
-    setRemainingParticipants(initialRemaining);
-  }, [participants, currentLayout]);
+    setRemainingParticipants(allParticipants.slice(initialGridSize));
+
+    if (isCameraOn && localVideoRef.current) {
+      const webcam = localStreams.find((p) => p.type === "webcam");
+      if (webcam)
+        localVideoRef.current.srcObject = new MediaStream([webcam.track]);
+    }
+    if (isScreenSharing && localScreenRef.current) {
+      const screen = localStreams.find((p) => p.type === "screen");
+      if (screen)
+        localScreenRef.current.srcObject = new MediaStream([screen.track]);
+    }
+  }, [participants, currentLayout, localStreams, isCameraOn, isScreenSharing]);
+
+  useEffect(() => {
+    participants.forEach((participant) => {
+      participant.consumers.forEach((consumer: any) => {
+        const elId = `participant-${participant.socketId}`;
+        const participantEl = document.getElementById(elId);
+        if (!participantEl) return;
+
+        if (consumer.track.kind === "video") {
+          const isScreenShare = consumer.track.getSettings().width > 1000;
+          const container = isScreenShare
+            ? participantEl.querySelector(".screen-container")
+            : participantEl.querySelector(".video-container");
+          if (container && !consumer.consumer.attached) {
+            const videoEl = document.createElement("video");
+            videoEl.autoplay = true;
+            videoEl.playsInline = true;
+            videoEl.muted = true;
+            videoEl.srcObject = new MediaStream([consumer.track]);
+            container.innerHTML = "";
+            container.appendChild(videoEl);
+            consumer.consumer.attached = true;
+            participant[isScreenShare ? "screenEl" : "videoEl"] = videoEl;
+          }
+        } else if (
+          consumer.track.kind === "audio" &&
+          !consumer.consumer.attached
+        ) {
+          const audioEl = document.createElement("audio");
+          audioEl.autoplay = true;
+          audioEl.srcObject = new MediaStream([consumer.track]);
+          document.body.appendChild(audioEl);
+          consumer.consumer.attached = true;
+          participant.audioEl = audioEl;
+        }
+      });
+    });
+  }, [participants]);
 
   const updateRemainingParticipants = (currentGrid: (Participant | null)[]) => {
     const gridParticipantIds = currentGrid
@@ -127,20 +211,48 @@ const StreamView: React.FC<StreamViewProps> = ({
     const [{ isDragging }, drag] = useDrag(() => ({
       type: "participant",
       item: { participant, index },
-      collect: (monitor) => ({
-        isDragging: monitor.isDragging(),
-      }),
+      collect: (monitor) => ({ isDragging: monitor.isDragging() }),
     }));
 
     return (
       <div
         ref={drag}
         style={{ opacity: isDragging ? 0.5 : 1 }}
+        id={`participant-${participant.socketId}`}
         className="w-full h-full bg-gray-800/90 rounded-lg border border-gray-700/50 overflow-hidden cursor-move"
       >
         <div className="w-full h-full bg-gray-800 flex items-center justify-center relative">
-          <span className="text-3xl font-bold text-white">
-            {participant.username[0].toUpperCase()}
+          {participant.socketId === "local" ? (
+            <>
+              <div className="video-container w-full h-full">
+                <video
+                  ref={localVideoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              {isScreenSharing && (
+                <div className="screen-container w-full h-full absolute top-0 left-0">
+                  <video
+                    ref={localScreenRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="video-container w-full h-full" />
+              <div className="screen-container w-full h-full absolute top-0 left-0" />
+            </>
+          )}
+          <span className="text-3xl font-bold text-white absolute">
+            {participant.username ? participant.username[0].toUpperCase() : "?"}
           </span>
           {participant.role === "host" && (
             <div className="absolute top-2 right-2 bg-yellow-500/20 rounded-full p-1">
@@ -151,7 +263,6 @@ const StreamView: React.FC<StreamViewProps> = ({
       </div>
     );
   };
-
   const GridSlot = ({
     index,
     participant,
