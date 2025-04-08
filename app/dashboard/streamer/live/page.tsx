@@ -134,7 +134,8 @@ export default function Page() {
             channelData: { _id: response.roomId },
           });
         } else {
-          toast.error("Invalid or expired invite token");
+          console.log(response, "error in verifying invite token");
+          toast.error(response.message);
           router.push("/dashboard/streamer/main");
           socket.disconnect();
         }

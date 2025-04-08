@@ -32,12 +32,13 @@ interface Consumer {
   consumer: any;
   track: MediaStreamTrack;
   producerSocketId: string;
+  userId?: string;
 }
 
 interface Participant {
   socketId: string;
-  userId?: string;    
-  username?: string;  
+  userId?: string;
+  username?: string;
   role?: string;
   consumers: Consumer[];
   videoEl?: HTMLVideoElement;
@@ -92,26 +93,137 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
     [streamSettings]
   );
 
+  // Create send transport - Fixed to match the SocketService implementation
+  const createSendTransport = async () => {
+    if (!streamingSocket || !deviceRef.current) return;
+
+    try {
+      const transportOptions = await new Promise<any>((resolve, reject) => {
+        streamingSocket.emit(
+          "createTransport",
+          { direction: "send" },
+          (response: any) => {
+            if (response.error) reject(response.error);
+            else resolve(response);
+          }
+        );
+      });
+
+      const transport = deviceRef.current.createSendTransport(transportOptions);
+
+      transport.on("connect", async ({ dtlsParameters }, callback, errback) => {
+        try {
+          await new Promise<void>((resolve, reject) => {
+            streamingSocket.emit(
+              "connectTransport",
+              {
+                transportId: transport.id,
+                dtlsParameters,
+              },
+              (response?: any) => {
+                if (response?.error) reject(response.error);
+                else resolve();
+              }
+            );
+          });
+          callback();
+        } catch (error:any) {
+          errback(error);
+        }
+      });
+
+      transport.on(
+        "produce",
+        async ({ kind, rtpParameters }, callback, errback) => {
+          try {
+            const { id, error } = await new Promise<any>((resolve) => {
+              streamingSocket.emit(
+                "produce",
+                {
+                  transportId: transport.id,
+                  kind,
+                  rtpParameters,
+                },
+                resolve
+              );
+            });
+
+            if (error) {
+              errback(error);
+              return;
+            }
+
+            callback({ id });
+          } catch (error:any) {
+            errback(error);
+          }
+        }
+      );
+
+      sendTransportRef.current = transport;
+    } catch (error) {
+      console.error("Failed to create send transport:", error);
+      setErrorMessage("Failed to create send transport");
+    }
+  };
+
+  // Create receive transport - Fixed to match the SocketService implementation
+  const createRecvTransport = async () => {
+    if (!streamingSocket || !deviceRef.current) return;
+
+    try {
+      const transportOptions = await new Promise<any>((resolve, reject) => {
+        streamingSocket.emit(
+          "createTransport",
+          { direction: "recv" },
+          (response: any) => {
+            if (response.error) reject(response.error);
+            else resolve(response);
+          }
+        );
+      });
+
+      const transport = deviceRef.current.createRecvTransport(transportOptions);
+
+      transport.on("connect", async ({ dtlsParameters }, callback, errback) => {
+        try {
+          await new Promise<void>((resolve, reject) => {
+            streamingSocket.emit(
+              "connectTransport",
+              {
+                transportId: transport.id,
+                dtlsParameters,
+              },
+              (response?: any) => {
+                if (response?.error) reject(response.error);
+                else resolve();
+              }
+            );
+          });
+          callback();
+        } catch (error:any) {
+          errback(error);
+        }
+      });
+
+      recvTransportRef.current = transport;
+    } catch (error) {
+      console.error("Failed to create receive transport:", error);
+      setErrorMessage("Failed to create receive transport");
+    }
+  };
+
   useEffect(() => {
     if (streamingSocket) {
       console.log("Streaming socket is connected in liveStudio");
 
+      // Join studio
       streamingSocket.emit("joinStudio", { role, user, channelData });
 
-      const joinRoom = async () => {
+      const handleRouterRtpCapabilities = async (rtpCapabilities: any) => {
         try {
-          const { routerRtpCapabilities } = await new Promise<any>(
-            (resolve) => {
-              streamingSocket.emit(
-                "joinRoom",
-                streamId || channelData._id,
-                resolve
-              );
-            }
-          );
-
           const device = new Device();
-          await device.load({ routerRtpCapabilities });
+          await device.load({ routerRtpCapabilities: rtpCapabilities });
           deviceRef.current = device;
 
           await createSendTransport();
@@ -119,56 +231,71 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
 
           setIsJoined(true);
 
-          // Handle initial camera/mic states
+          // Handle initial media states after setup
           if (initialCameraOn) enableCamera();
           if (initialMicOn) enableMicrophone();
         } catch (error) {
-          console.error("Error joining room:", error);
-          setErrorMessage("Failed to join room.");
+          console.error("Error setting up device:", error);
+          setErrorMessage("Failed to set up streaming device.");
         }
       };
 
       const handleStreamUpdate = (data: any) => {
         console.log("Stream update:", data);
         setStreamId(data?.id);
-        setParticipants((prev) => {
-          const updated = new Map(prev);
-          data?.participants?.forEach((p: any) => {
-            if (!updated.has(p.socketId)) {
-              updated.set(p.socketId, { ...p, consumers: [] });
-            }
-          });
-          return updated;
-        });
-        joinRoom();
       };
 
       const handleParticipantJoined = (participant: any) => {
+        console.log("Participant joined:", participant);
         setParticipants((prev) => {
           const updated = new Map(prev);
           if (!updated.has(participant.socketId)) {
             updated.set(participant.socketId, {
-              ...participant,
+              socketId: participant.socketId,
+              userId: participant.userId,
+              role: participant.role,
+              username: participant.username,
               consumers: [],
+            });
+          } else {
+            const existing = updated.get(participant.socketId)!;
+            updated.set(participant.socketId, {
+              ...existing,
+              userId: participant.userId,
+              role: participant.role,
+              username: participant.username,
             });
           }
           return updated;
         });
       };
-      console.log(participants, "participants got ");
 
-      const handleNewProducer = async ({
-        producerId,
-        producerSocketId,
-      }: any) => {
-        await consumeProducer(producerId, producerSocketId);
+      const handleNewProducer = async (data: any) => {
+        const { producerId, producerSocketId, userId, role, username } = data;
+
+        setParticipants((prev) => {
+          const updated = new Map(prev);
+          if (!updated.has(producerSocketId)) {
+            updated.set(producerSocketId, {
+              socketId: producerSocketId,
+              userId: userId,
+              role: role,
+              username: username,
+              consumers: [],
+            });
+          }
+          return updated;
+        });
+
+        await consumeProducer(producerId, producerSocketId, userId);
       };
 
       const handleProducerClosed = ({ producerId }: any) => {
         removeConsumerByProducerId(producerId);
       };
 
-      const handleParticipantLeft = ({ socketId }: any) => {
+      const handleParticipantLeft = ({ socketId, userId }: any) => {
+        console.log(`Participant left: ${userId} (Socket: ${socketId})`);
         setParticipants((prev) => {
           const updated = new Map(prev);
           updated.delete(socketId);
@@ -183,95 +310,124 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
 
       const handleError = (error: any) => {
         console.error("Streaming socket error:", error);
+        setErrorMessage(error.message || "An error occurred");
       };
 
       const handleGuestRequest = (request: any) => {
+        console.log("Guest request received:", request);
         if (role === "host") {
-          setGuestRequests((prev) => [...prev, request]);
+          // Prevent duplicate requests
+          setGuestRequests((prev) => {
+            const exists = prev.some((r) => r.socketId === request.socketId);
+            if (exists) return prev;
+            return [...prev, request];
+          });
         }
       };
 
+      const handleJoinApproved = ({ streamId, reconnected }: any) => {
+        console.log(
+          `Join approved for stream ${streamId}, reconnected: ${reconnected}`
+        );
+        setStreamId(streamId);
+      };
+
+      const handleJoinDenied = (data: any) => {
+        console.log("Join denied:", data);
+        setErrorMessage(data.message || "Your request to join was denied");
+      };
+
+      // Setup event listeners
+      streamingSocket.on("routerRtpCapabilities", handleRouterRtpCapabilities);
       streamingSocket.on("streamUpdate", handleStreamUpdate);
       streamingSocket.on("streamSettings", handleStreamSettings);
       streamingSocket.on("error", handleError);
       streamingSocket.on("newProducer", handleNewProducer);
       streamingSocket.on("producerClosed", handleProducerClosed);
       streamingSocket.on("participantLeft", handleParticipantLeft);
-      streamingSocket.on("guestRequest", handleGuestRequest);
       streamingSocket.on("participantJoined", handleParticipantJoined);
-      streamingSocket.on("error", (error: any) => {
-        console.error("Streaming socket error:", error);
-        setErrorMessage("Socket error occurred.");
-      });
+      streamingSocket.on("guestRequest", handleGuestRequest);
+      streamingSocket.on("joinApproved", handleJoinApproved);
+      streamingSocket.on("joinDenied", handleJoinDenied);
 
+      if (streamId) {
+        streamingSocket.emit("getStreamSettings", streamId);
+      }
+
+      // Cleanup function
       return () => {
         closeAllProducers();
+        streamingSocket.off(
+          "routerRtpCapabilities",
+          handleRouterRtpCapabilities
+        );
         streamingSocket.off("streamUpdate", handleStreamUpdate);
-        streamingSocket.off("newProducer");
-        streamingSocket.off("producerClosed");
-        streamingSocket.off("participantLeft");
-        streamingSocket.off("participantJoined", handleParticipantJoined);
         streamingSocket.off("streamSettings", handleStreamSettings);
         streamingSocket.off("error", handleError);
+        streamingSocket.off("newProducer", handleNewProducer);
+        streamingSocket.off("producerClosed", handleProducerClosed);
+        streamingSocket.off("participantLeft", handleParticipantLeft);
+        streamingSocket.off("participantJoined", handleParticipantJoined);
         streamingSocket.off("guestRequest", handleGuestRequest);
+        streamingSocket.off("joinApproved", handleJoinApproved);
+        streamingSocket.off("joinDenied", handleJoinDenied);
       };
     }
-  }, [streamingSocket, role, user, channelData, handleSettingsChange]);
+  }, [streamingSocket, role, user, channelData, initialCameraOn, initialMicOn]);
 
-  // Create send transport
-  const createSendTransport = async () => {
-    if (!streamingSocket || !deviceRef.current) return;
-    const transportOptions = await new Promise<any>((resolve) => {
-      streamingSocket.emit("createTransport", "send", resolve);
-    });
-    const transport = deviceRef.current.createSendTransport(transportOptions);
-    transport.on("connect", async ({ dtlsParameters }, callback, errback) => {
-      await streamingSocket.emitWithAck("connectTransport", {
-        transportId: transport.id,
-        dtlsParameters,
-      });
-      callback();
-    });
-    transport.on("produce", async ({ kind, rtpParameters }, callback) => {
-      const { id } = await streamingSocket.emitWithAck("produce", {
-        transportId: transport.id,
-        kind,
-        rtpParameters,
-      });
-      callback({ id });
-    });
-    sendTransportRef.current = transport;
-  };
+  useEffect(() => {
+    if (streamingSocket && streamId) {
+      streamingSocket.emit("getStreamSettings", streamId);
+    }
+  }, [streamingSocket, streamId]);
 
-  // Create receive transport
-  const createRecvTransport = async () => {
-    if (!streamingSocket || !deviceRef.current) return;
-    const transportOptions = await new Promise<any>((resolve) => {
-      streamingSocket.emit("createTransport", "recv", resolve);
-    });
-    const transport = deviceRef.current.createRecvTransport(transportOptions);
-    transport.on("connect", async ({ dtlsParameters }, callback, errback) => {
-      await streamingSocket.emitWithAck("connectTransport", {
-        transportId: transport.id,
-        dtlsParameters,
-      });
-      callback();
-    });
-    recvTransportRef.current = transport;
-  };
-
-  // Media control functions
   const enableCamera = async () => {
-    if (!deviceRef.current?.canProduce("video") || !sendTransportRef.current)
-      return;
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-    const track = stream.getVideoTracks()[0];
-    const producer = await sendTransportRef.current.produce({ track });
-    setProducers((prev) => [
-      ...prev,
-      { id: producer.id, track, type: "webcam" },
-    ]);
-    setIsCameraOn(true);
+    try {
+      console.log(
+        "Enabling camera...",
+        deviceRef.current?.canProduce("video"),
+        sendTransportRef.current,
+        "sendTransportRef.current?.id",
+        sendTransportRef.current?.id
+      );
+
+      if (
+        !deviceRef.current?.canProduce("video") ||
+        !sendTransportRef.current
+      ) {
+        console.warn("Cannot produce video or send transport not ready");
+        return;
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+      });
+
+      const track = stream.getVideoTracks()[0];
+      const producer = await sendTransportRef.current.produce({
+        track,
+        encodings: [
+          { maxBitrate: 500000, scaleResolutionDownBy: 2 },
+          { maxBitrate: 1000000, scaleResolutionDownBy: 1 },
+        ],
+        codecOptions: {
+          videoGoogleStartBitrate: 1000,
+        },
+      });
+
+      setProducers((prev) => [
+        ...prev,
+        { id: producer.id, track, type: "webcam" },
+      ]);
+
+      setIsCameraOn(true);
+    } catch (error) {
+      console.error("Error enabling camera:", error);
+      setErrorMessage("Failed to enable camera. Please check permissions.");
+    }
   };
 
   const disableCamera = () => {
@@ -285,16 +441,44 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
   };
 
   const enableMicrophone = async () => {
-    if (!deviceRef.current?.canProduce("audio") || !sendTransportRef.current)
-      return;
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const track = stream.getAudioTracks()[0];
-    const producer = await sendTransportRef.current.produce({ track });
-    setProducers((prev) => [
-      ...prev,
-      { id: producer.id, track, type: "microphone" },
-    ]);
-    setIsMicOn(true);
+    try {
+      if (
+        !deviceRef.current?.canProduce("audio") ||
+        !sendTransportRef.current
+      ) {
+        console.warn("Cannot produce audio or send transport not ready");
+        return;
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+
+      const track = stream.getAudioTracks()[0];
+      const producer = await sendTransportRef.current.produce({
+        track,
+        codecOptions: {
+          opusStereo: true,
+          opusDtx: true,
+          opusFec: true,
+          opusMaxPlaybackRate: 48000,
+        },
+      });
+
+      setProducers((prev) => [
+        ...prev,
+        { id: producer.id, track, type: "microphone" },
+      ]);
+
+      setIsMicOn(true);
+    } catch (error) {
+      console.error("Error enabling microphone:", error);
+      setErrorMessage("Failed to enable microphone. Please check permissions.");
+    }
   };
 
   const disableMicrophone = () => {
@@ -308,19 +492,45 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
   };
 
   const startScreenSharing = async () => {
-    if (!deviceRef.current?.canProduce("video") || !sendTransportRef.current)
-      return;
-    const stream = await navigator.mediaDevices.getDisplayMedia({
-      video: true,
-    });
-    const track = stream.getVideoTracks()[0];
-    track.addEventListener("ended", stopScreenSharing);
-    const producer = await sendTransportRef.current.produce({ track });
-    setProducers((prev) => [
-      ...prev,
-      { id: producer.id, track, type: "screen" },
-    ]);
-    setIsScreenSharing(true);
+    try {
+      if (
+        !deviceRef.current?.canProduce("video") ||
+        !sendTransportRef.current
+      ) {
+        console.warn("Cannot produce video or send transport not ready");
+        return;
+      }
+
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          displaySurface: "screen",
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          frameRate: { ideal: 60 },
+        },
+      });
+
+      const track = stream.getVideoTracks()[0];
+
+      // Handle the user ending screen sharing through the browser UI
+      track.addEventListener("ended", stopScreenSharing);
+
+      const producer = await sendTransportRef.current.produce({
+        track,
+        encodings: [{ maxBitrate: 1500000, scaleResolutionDownBy: 1 }],
+        appData: { mediaType: "screen" },
+      });
+
+      setProducers((prev) => [
+        ...prev,
+        { id: producer.id, track, type: "screen" },
+      ]);
+
+      setIsScreenSharing(true);
+    } catch (error) {
+      console.error("Error starting screen sharing:", error);
+      setErrorMessage("Failed to start screen sharing. Please try again.");
+    }
   };
 
   const stopScreenSharing = () => {
@@ -335,58 +545,116 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
 
   const consumeProducer = async (
     producerId: string,
-    producerSocketId: string
+    producerSocketId: string,
+    producerUserId?: string
   ) => {
-    if (!recvTransportRef.current || !deviceRef.current) return;
-    const { id, kind, rtpParameters } = await streamingSocket.emitWithAck(
-      "consume",
-      {
-        transportId: recvTransportRef.current.id,
-        producerId,
-        rtpCapabilities: deviceRef.current.rtpCapabilities,
+    if (!recvTransportRef.current || !deviceRef.current) {
+      console.warn("Receive transport or device not ready");
+      return;
+    }
+
+    try {
+      const { id, kind, rtpParameters, error } = await new Promise<any>(
+        (resolve) => {
+          streamingSocket.emit(
+            "consume",
+            {
+              transportId: recvTransportRef.current.id,
+              producerId,
+              rtpCapabilities: deviceRef.current?.rtpCapabilities || null,
+            },
+            resolve
+          );
+        }
+      );
+
+      if (error) {
+        console.error("Error consuming producer:", error);
+        return;
       }
-    );
-    const consumer = await recvTransportRef.current.consume({
-      id,
-      producerId,
-      kind,
-      rtpParameters,
-    });
-    streamingSocket.emit("resumeConsumer", consumer.id);
-    const newConsumer: Consumer = {
-      id: consumer.id,
-      producerId,
-      consumer,
-      track: consumer.track,
-      producerSocketId,
-    };
-    setParticipants((prev) => {
-      const updated = new Map(prev);
-      const participant = updated.get(producerSocketId) || {
-        socketId: producerSocketId,
-        consumers: [],
+
+      const consumer = await recvTransportRef.current.consume({
+        id,
+        producerId,
+        kind,
+        rtpParameters,
+      });
+
+      // Resume the consumer to start receiving media
+      await new Promise<void>((resolve, reject) => {
+        streamingSocket.emit(
+          "resumeConsumer",
+          consumer.id,
+          (response?: any) => {
+            if (response?.error) reject(response.error);
+            else resolve();
+          }
+        );
+      });
+
+      const newConsumer: Consumer = {
+        id: consumer.id,
+        producerId,
+        consumer,
+        track: consumer.track,
+        producerSocketId,
+        userId: producerUserId,
       };
-      participant.consumers = [...participant.consumers, newConsumer];
-      updated.set(producerSocketId, participant);
-      return updated;
-    });
+
+      setParticipants((prev) => {
+        const updated = new Map(prev);
+        const participant = updated.get(producerSocketId);
+
+        if (participant) {
+          // Add consumer to existing participant
+          participant.consumers = [...participant.consumers, newConsumer];
+          updated.set(producerSocketId, participant);
+        } else {
+          // Create new participant if we don't have it yet
+          updated.set(producerSocketId, {
+            socketId: producerSocketId,
+            consumers: [newConsumer],
+            userId: producerUserId,
+          });
+          console.log(`Created new participant for socket ${producerSocketId}`);
+        }
+
+        return updated;
+      });
+    } catch (error) {
+      console.error("Error consuming producer:", error);
+    }
   };
 
   const removeConsumerByProducerId = (producerId: string) => {
     setParticipants((prev) => {
       const updated = new Map(prev);
-      for (const [socketId, participant] of updated) {
+
+      updated.forEach((participant, socketId) => {
         const consumerIndex = participant.consumers.findIndex(
           (c) => c.producerId === producerId
         );
+
         if (consumerIndex !== -1) {
           const consumer = participant.consumers[consumerIndex];
           consumer.consumer.close();
-          participant.consumers.splice(consumerIndex, 1);
-          if (participant.consumers.length === 0) updated.delete(socketId);
-          break;
+
+          // Update consumer list
+          const updatedConsumers = [...participant.consumers];
+          updatedConsumers.splice(consumerIndex, 1);
+
+          // Update participant or remove if no consumers left
+          if (updatedConsumers.length > 0) {
+            participant.consumers = updatedConsumers;
+            updated.set(socketId, participant);
+          } else {
+            // We don't remove participants without consumers - they might just have their camera/mic off
+            participant.consumers = [];
+            updated.set(socketId, participant);
+          }
         }
-      }
+      });
+
       return updated;
     });
   };
@@ -402,24 +670,38 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
     setIsScreenSharing(false);
   };
 
-  useEffect(() => {
-    if (streamingSocket && isJoined && streamId) {
-      streamingSocket.emit("getStreamSettings", streamId);
-    }
-  }, [streamingSocket, isJoined, streamId]);
-
+  // Updated approve guest handler to match socket service
   const handleApproveGuest = async (request: any) => {
     if (streamingSocket && role === "host") {
-      await streamingSocket.emitWithAck("approveGuest", {
-        token: request.token,
-        username: request.username,
-        channelId: request.channelId,
-        socketId: request.socketId,
-        approverId: user._id,
-      });
-      setGuestRequests((prev) =>
-        prev.filter((r) => r.socketId !== request.socketId)
-      );
+      try {
+        await new Promise<void>((resolve, reject) => {
+          streamingSocket.emit(
+            "approveGuest",
+            {
+              token: request.token,
+              username: request.username,
+              channelId: request.channelId,
+              socketId: request.socketId,
+              approverId: user._id,
+            },
+            (response?: any) => {
+              if (response?.error) {
+                setErrorMessage(response.error);
+                reject(response.error);
+              } else {
+                resolve();
+              }
+            }
+          );
+        });
+
+        // Remove the request from the list
+        setGuestRequests((prev) =>
+          prev.filter((r) => r.socketId !== request.socketId)
+        );
+      } catch (error) {
+        console.error("Error approving guest:", error);
+      }
     }
   };
 
@@ -430,6 +712,8 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
         approverId: user._id,
         channelId: request.channelId,
       });
+
+      // Remove the request from the list
       setGuestRequests((prev) =>
         prev.filter((r) => r.socketId !== request.socketId)
       );
@@ -466,7 +750,23 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
     },
   };
 
-  const channelOwner: any = channelData.ownerId;
+  // Display error message if present
+  if (errorMessage) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-[#0a172b] text-white">
+        <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-6 max-w-md">
+          <h3 className="text-xl font-medium mb-2">Error</h3>
+          <p>{errorMessage}</p>
+          <Button
+            className="mt-4 bg-white/10 hover:bg-white/20"
+            onClick={() => setErrorMessage("")}
+          >
+            Dismiss
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <DndProvider backend={HTML5Backend}>
@@ -476,25 +776,32 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
           <div className="flex flex-1 overflow-hidden">
             <Sidebar />
             <div className="flex-1 flex flex-col overflow-hidden">
-            <StreamView
-              streamSettings={streamSettings}
-              participants={Array.from(participants.values())}
-              currentLayout={currentLayout}
-              setCurrentLayout={setCurrentLayout}
-              localStreams={producers}
-              isCameraOn={isCameraOn}
-              isScreenSharing={isScreenSharing}
-            />
-            <ControlBar
-              channelId={channelData._id}
-              streamerId={channelData.ownerId}
-              toggleCamera={() => (isCameraOn ? disableCamera() : enableCamera())}
-              toggleMicrophone={() => (isMicOn ? disableMicrophone() : enableMicrophone())}
-              toggleScreenSharing={() => (isScreenSharing ? stopScreenSharing() : startScreenSharing())}
-              isCameraOn={isCameraOn}
-              isMicOn={isMicOn}
-              isScreenSharing={isScreenSharing}
-            />
+              <StreamView
+                streamSettings={streamSettings}
+                participants={Array.from(participants.values())}
+                currentLayout={currentLayout}
+                setCurrentLayout={setCurrentLayout}
+                localStreams={producers}
+                isCameraOn={isCameraOn}
+                isScreenSharing={isScreenSharing}
+                localUserId={localUserId}
+              />
+              <ControlBar
+                channelId={channelData._id}
+                streamerId={channelData.ownerId}
+                toggleCamera={() =>
+                  isCameraOn ? disableCamera() : enableCamera()
+                }
+                toggleMicrophone={() =>
+                  isMicOn ? disableMicrophone() : enableMicrophone()
+                }
+                toggleScreenSharing={() =>
+                  isScreenSharing ? stopScreenSharing() : startScreenSharing()
+                }
+                isCameraOn={isCameraOn}
+                isMicOn={isMicOn}
+                isScreenSharing={isScreenSharing}
+              />
             </div>
             <SourcePanel
               role={role}
@@ -502,6 +809,7 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
               streamId={streamId}
             />
           </div>
+
           {/* Guest Request UI for Host */}
           {role === "host" && guestRequests.length > 0 && (
             <div className="fixed bottom-4 right-4 z-50 bg-zinc-800 p-4 w-96 rounded-lg border border-zinc-700">
@@ -527,10 +835,12 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
                             transition={{ type: "spring", stiffness: 300 }}
                             className="w-10 h-10 bg-zinc-700 rounded-full flex items-center justify-center text-gray-300"
                           >
-                            {request.username[0].toUpperCase()}
+                            {request.username
+                              ? request.username[0].toUpperCase()
+                              : "?"}
                           </motion.span>
                           <span className="text-gray-300 font-medium">
-                            {request.username}
+                            {request.username || "Guest"}
                           </span>
                         </div>
 
