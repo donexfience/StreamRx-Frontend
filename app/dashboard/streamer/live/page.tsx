@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   useGetChannelByChannelIdQuery,
   useGetChannelByEmailQuery,
@@ -33,7 +33,7 @@ export default function Page() {
   const [isLive, setIsLive] = useState(false);
   const [isGuest, setIsGuest] = useState(false);
   const [activeChannelId, setActiveChannelId] = useState<any>(null);
-
+  const [streamId, setStreamId] = useState<string | null>(null);
   //guest approval states
   const [showUsernameModal, setShowUsernameModal] = useState(false);
   const [username, setUsername] = useState("");
@@ -41,6 +41,8 @@ export default function Page() {
   const [isApproved, setIsApproved] = useState(false);
   const [micOn, setIsMicOn] = useState(false);
   const [cameraOn, setCameraOn] = useState(false);
+
+  const socketRef = useRef<any>(null);
 
   const router = useRouter();
 
@@ -75,11 +77,15 @@ export default function Page() {
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get("token");
-    let socket: any;
+    if (socketRef.current) {
+      console.log("Disconnecting previous socket");
+      socketRef.current.disconnect();
+      socketRef.current = null;
+    }
 
     if (token && userData?.user) {
       setIsGuest(true);
-      socket = io("http://localhost:3011", {
+      socketRef.current = io("http://localhost:3011", {
         transports: ["websocket", "polling"],
         forceNew: true,
         reconnection: true,
@@ -88,29 +94,13 @@ export default function Page() {
         timeout: 5000,
       });
 
-      console.log("Socket connected:", socket.id);
+      console.log("Socket connected:", socketRef.current.id);
 
-      // Set up streamUpdate listener before any emits
-      socket.on("streamUpdate", (data: any) => {
-        console.log(data, "data got in the streamUpdate from BE");
-        console.log(userData?.user?._id, "user data in the stream update ");
-        const isApprovedParticipant = data?.participants?.some(
-          (p: any) => p.userId === userData.user?._id
-        );
-        console.log("isApprovedParticipant:", isApprovedParticipant);
-        if (isApprovedParticipant) {
-          console.log("approved guy", userData.user?._id);
-          setIsApproved(true);
-        } else {
-          setShowUsernameModal(true);
-        }
-      });
-
-      socket.on("connect_error", (error: any) => {
+      socketRef.current.on("connect_error", (error: any) => {
         console.error("Socket connection error:", error);
       });
 
-      socket.on("streamUpdate", (data: any) => {
+      socketRef.current.on("streamUpdate", (data: any) => {
         console.log(data, "data got in the streamUpdate from BE");
         const isApprovedParticipant = data?.participants?.some(
           (p: any) => p.userId === userData.user?._id
@@ -123,31 +113,63 @@ export default function Page() {
         }
       });
 
-      socket.emit("verifyInvite", { token, username }, (response: any) => {
-        if (response.success) {
-          setRole("guest");
-          setActiveChannelId(response.roomId);
-          console.log("verifying invite successful, joining studio");
-          socket.emit("joinStudio", {
-            role: "guest",
-            user: userData?.user,
-            channelData: { _id: response.roomId },
-          });
-        } else {
-          toast.error("Invalid or expired invite token");
-          router.push("/dashboard/streamer/main");
-          socket.disconnect();
+      socketRef.current.on(
+        "joinApproved",
+        ({ streamId: newStreamId }: { streamId: any }) => {
+          console.log("Join approved with streamId:", newStreamId);
+          setStreamId(newStreamId);
+          setIsWaitingForApproval(false);
+          setIsApproved(true);
         }
+      );
+
+      socketRef.current.on("joinDenied", ({ message }: { message: any }) => {
+        setIsWaitingForApproval(false);
+        toast.error(message || "The host has denied your request to join.");
+        router.push("/dashboard/streamer/main");
       });
+
+      socketRef.current.emit(
+        "verifyInvite",
+        { token, username },
+        (response: any) => {
+          if (response.success) {
+            setRole("guest");
+            setActiveChannelId(response.roomId);
+            if (response.streamId) {
+              setStreamId(response.streamId);
+              console.log(
+                "Already approved guest, streamId:",
+                response.streamId
+              );
+
+              socketRef.current.emit("joinStudio", {
+                role: "guest",
+                user: userData?.user,
+                channelData: { _id: response.roomId },
+              });
+            } else {
+              console.log("Valid invite, but not yet approved");
+              setShowUsernameModal(true);
+            }
+          } else {
+            toast.error(response.message || "Failed to verify invite.");
+            console.error("Error verifying invite:", response.message);
+            router.push("/dashboard/streamer/main");
+            setShowUsernameModal(false);
+          }
+        }
+      );
     } else if (!token && channelData?._id) {
       setIsGuest(false);
       setActiveChannelId(channelData._id);
     }
 
     return () => {
-      if (socket) {
+      if (socketRef.current) {
         console.log("Socket disconnecting on cleanup");
-        socket.disconnect();
+        socketRef.current.disconnect();
+        socketRef.current = null;
       }
     };
   }, [userData, channelData, router]);
@@ -343,6 +365,30 @@ export default function Page() {
   const handleExitToOwnStream = () => {
     router.push("/dashboard/streamer/main");
   };
+
+  const handleJoinRequest = (inputUsername: any) => {
+    setUsername(inputUsername.username);
+    setIsMicOn(inputUsername.micOn);
+    setCameraOn(inputUsername.cameraOn);
+    setShowUsernameModal(false);
+    setIsWaitingForApproval(true);
+
+    // Use the existing socket connection
+    if (socketRef.current) {
+      const token = new URLSearchParams(window.location.search).get("token");
+      socketRef.current.emit("requestToJoin", {
+        token,
+        username: inputUsername.username,
+        channelId: activeChannelId,
+        userId: userData?.user?._id,
+        cameraOn: inputUsername.cameraOn,
+        micOn: inputUsername.micOn,
+      });
+    } else {
+      toast.error("Connection error. Please refresh the page.");
+    }
+  };
+
   console.log("userdat and role", userData, role);
 
   return (
@@ -395,42 +441,7 @@ export default function Page() {
             setShowUsernameModal(false);
             router.push("/dashboard/streamer/main");
           }}
-          onJoin={(inputUsername: any) => {
-            setUsername(inputUsername.username);
-            setIsMicOn(inputUsername.micOn);
-            setCameraOn(inputUsername.cameraOn);
-            setShowUsernameModal(false);
-            setIsWaitingForApproval(true);
-
-            const socket = io("http://localhost:3011", {
-              transports: ["websocket", "polling"],
-              forceNew: true,
-            });
-            const token = new URLSearchParams(window.location.search).get(
-              "token"
-            );
-            socket.emit("requestToJoin", {
-              token,
-              username: inputUsername.username,
-              channelId: activeChannelId,
-              userId: userData?.user?._id,
-              cameraOn: inputUsername.cameraOn,
-              micOn: inputUsername.micOn,
-            });
-
-            socket.on("joinApproved", ({ streamId }) => {
-              setIsWaitingForApproval(false);
-              setIsApproved(true);
-              socket.disconnect();
-            });
-
-            socket.on("joinDenied", () => {
-              setIsWaitingForApproval(false);
-              toast.error("The host has denied your request to join.");
-              router.push("/dashboard/streamer/main");
-              socket.disconnect();
-            });
-          }}
+          onJoin={handleJoinRequest}
         />
       )}
 
