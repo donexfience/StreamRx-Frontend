@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { Device } from "mediasoup-client";
+import { argv } from "process";
 
 interface LIVESTUDIOProps {
   role: "host" | "guest";
@@ -127,7 +128,7 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
             );
           });
           callback();
-        } catch (error:any) {
+        } catch (error: any) {
           errback(error);
         }
       });
@@ -154,7 +155,7 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
             }
 
             callback({ id });
-          } catch (error:any) {
+          } catch (error: any) {
             errback(error);
           }
         }
@@ -201,7 +202,7 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
             );
           });
           callback();
-        } catch (error:any) {
+        } catch (error: any) {
           errback(error);
         }
       });
@@ -349,6 +350,10 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
       streamingSocket.on("guestRequest", handleGuestRequest);
       streamingSocket.on("joinApproved", handleJoinApproved);
       streamingSocket.on("joinDenied", handleJoinDenied);
+      // Listen to all events for debugging
+      streamingSocket.onAny((event: any, ...args: any) => {
+        console.log(`[DEBUG] Received event: "${event}"`, ...args);
+      });
 
       if (streamId) {
         streamingSocket.emit("getStreamSettings", streamId);
@@ -378,8 +383,9 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
   useEffect(() => {
     if (streamingSocket && streamId) {
       streamingSocket.emit("getStreamSettings", streamId);
+      console.log(participants, "participants total in LIVESTUDIO");
     }
-  }, [streamingSocket, streamId]);
+  }, [streamingSocket, streamId, participants]);
 
   const enableCamera = async () => {
     try {

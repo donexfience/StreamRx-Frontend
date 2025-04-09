@@ -127,7 +127,7 @@ export default function Page() {
         if (response.success) {
           setRole("guest");
           setActiveChannelId(response.roomId);
-          console.log("verifying invite successful, joining studio");
+          toast.success("verifying invite successful, joining studio");
           socket.emit("joinStudio", {
             role: "guest",
             user: userData?.user,
