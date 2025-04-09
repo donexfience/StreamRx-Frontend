@@ -13,7 +13,7 @@ import * as mediasoupClient from "mediasoup-client";
 import toast from "react-hot-toast";
 
 interface MediaState {
-  device: any;
+  device: mediasoupClient.types.Device | null;
   sendTransport: mediasoupClient.types.Transport | null;
   receiveTransport: mediasoupClient.types.Transport | null;
   producers: {
@@ -89,7 +89,7 @@ const StreamView: FC<{
                   <video
                     autoPlay
                     playsInline
-                    muted={participant.userId === participant.userId}
+                    muted={true}
                     ref={(el) => handleVideoRef(el, cameraStream)}
                     className="w-full h-auto bg-black rounded"
                   />
@@ -163,7 +163,7 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
   initialCameraOn = false,
   initialMicOn = false,
 }) => {
-  const { streamingSocket } = useSocket();
+  const { streamingSocket, streamingSocketRef } = useSocket();
   const [streamSettings, setStreamSettings] = useState({
     background: "linear-gradient(to bottom right, #b9328d, #4b6ef7)",
     overlay: null,
@@ -190,6 +190,7 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
     producerStreams: {},
     consumerStreams: {},
   });
+  const resolverRef = useRef<(id: string | null) => void>();
 
   // Local streams refs
   const localCameraStream = useRef<MediaStream | null>(null);
@@ -235,7 +236,7 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
       // Load the device with router RTP capabilities
       await device.load({ routerRtpCapabilities: rtpCapabilities });
       mediaState.current.device = device;
-      console.log("MediaSoup device initialized");
+      console.log("MediaSoup device initialized", mediaState.current.device);
 
       // Create send and receive transports
       await createSendTransport();
@@ -445,6 +446,11 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
   // Start camera
   const startCamera = async () => {
     try {
+      console.log(
+        mediaState.current.device?.canProduce("video"),
+        "camera produce check",
+        mediaState.current.sendTransport
+      );
       if (
         !mediaState.current.device?.canProduce("video") ||
         !mediaState.current.sendTransport
@@ -454,6 +460,7 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
       }
 
       const existingProducer = mediaState.current.producers["camera"];
+      console.log(existingProducer, "existingProducerrrrrrrrr");
       if (existingProducer) {
         // Get new media stream
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -475,14 +482,19 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
         const newTrack = stream.getVideoTracks()[0];
         await existingProducer.replaceTrack({ track: newTrack });
         await existingProducer.resume();
-        streamingSocket.emit(
-          "resumeProducer",
-          { streamId, producerId: existingProducer.id },
-          (response: any) => {
-            if (response.error)
-              console.error("Error resuming camera producer:", response.error);
-          }
-        );
+        if (streamingSocket) {
+          streamingSocket.emit(
+            "resumeProducer",
+            { streamId, producerId: existingProducer.id },
+            (response: any) => {
+              if (response.error)
+                console.error(
+                  "Error resuming camera producer:",
+                  response.error
+                );
+            }
+          );
+        }
         mediaState.current.cameraOn = true;
         mediaState.current.producerStreams[existingProducer.id] = stream;
         console.log("Camera resumed with producer ID:", existingProducer.id);
@@ -533,10 +545,28 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
   const stopCamera = async () => {
     try {
       const producer = mediaState.current.producers["camera"];
+      console.log(
+        producer,
+        "pausing producer in stop camera function",
+        streamingSocketRef.current
+      );
       if (!producer) return;
 
+      if (!streamingSocketRef.current) {
+        console.error("Streaming socket is not available in stopCamera");
+        if (localCameraStream.current) {
+          localCameraStream.current
+            .getTracks()
+            .forEach((track) => track.stop());
+          localCameraStream.current = null;
+        }
+        if (localVideoRef.current) localVideoRef.current.srcObject = null;
+        mediaState.current.cameraOn = false;
+        return;
+      }
       await producer.pause();
-      streamingSocket.emit(
+
+      streamingSocketRef.current.emit(
         "pauseProducer",
         { streamId, producerId: producer.id },
         (response: any) => {
@@ -588,14 +618,17 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
         const newTrack = stream.getAudioTracks()[0];
         await existingProducer.replaceTrack({ track: newTrack });
         await existingProducer.resume();
-        streamingSocket.emit(
-          "resumeProducer",
-          { streamId, producerId: existingProducer.id },
-          (response: any) => {
-            if (response.error)
-              console.error("Error resuming mic producer:", response.error);
-          }
-        );
+        if (streamingSocket) {
+          streamingSocket.emit(
+            "resumeProducer",
+            { streamId, producerId: existingProducer.id },
+            (response: any) => {
+              if (response.error)
+                console.error("Error resuming mic producer:", response.error);
+            }
+          );
+        }
+
         mediaState.current.micOn = true;
         mediaState.current.producerStreams[existingProducer.id] = stream;
         console.log(
@@ -641,10 +674,10 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
   const stopMicrophone = async () => {
     try {
       const producer = mediaState.current.producers["microphone"];
-      if (!producer) return;
-
+      if (!producer || !streamingSocketRef.current) return;
+      console.log(producer, "pausing producer in stop microphone function");
       await producer.pause();
-      streamingSocket.emit(
+      streamingSocketRef.current.emit(
         "pauseProducer",
         { streamId, producerId: producer.id },
         (response: any) => {
@@ -703,14 +736,19 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
         const videoTrack = stream.getVideoTracks()[0];
         await existingVideoProducer.replaceTrack({ track: videoTrack });
         await existingVideoProducer.resume();
-        streamingSocket.emit(
-          "resumeProducer",
-          { streamId, producerId: existingVideoProducer.id },
-          (response: any) => {
-            if (response.error)
-              console.error("Error resuming screen producer:", response.error);
-          }
-        );
+        if (streamingSocket) {
+          streamingSocket.emit(
+            "resumeProducer",
+            { streamId, producerId: existingVideoProducer.id },
+            (response: any) => {
+              if (response.error)
+                console.error(
+                  "Error resuming screen producer:",
+                  response.error
+                );
+            }
+          );
+        }
 
         const audioTrack = stream.getAudioTracks()[0];
         const existingAudioProducer =
@@ -718,17 +756,19 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
         if (audioTrack && existingAudioProducer) {
           await existingAudioProducer.replaceTrack({ track: audioTrack });
           await existingAudioProducer.resume();
-          streamingSocket.emit(
-            "resumeProducer",
-            { streamId, producerId: existingAudioProducer.id },
-            (response: any) => {
-              if (response.error)
-                console.error(
-                  "Error resuming screen-audio producer:",
-                  response.error
-                );
-            }
-          );
+          if (streamingSocket) {
+            streamingSocket.emit(
+              "resumeProducer",
+              { streamId, producerId: existingAudioProducer.id },
+              (response: any) => {
+                if (response.error)
+                  console.error(
+                    "Error resuming screen-audio producer:",
+                    response.error
+                  );
+              }
+            );
+          }
         }
 
         mediaState.current.screenShareOn = true;
@@ -796,30 +836,34 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
       const videoProducer = mediaState.current.producers["screen"];
       if (videoProducer) {
         await videoProducer.pause();
-        streamingSocket.emit(
-          "pauseProducer",
-          { streamId, producerId: videoProducer.id },
-          (response: any) => {
-            if (response.error)
-              console.error("Error pausing screen producer:", response.error);
-          }
-        );
+        if (streamingSocketRef.current) {
+          streamingSocketRef.current.emit(
+            "pauseProducer",
+            { streamId, producerId: videoProducer.id },
+            (response: any) => {
+              if (response.error)
+                console.error("Error pausing screen producer:", response.error);
+            }
+          );
+        }
       }
 
       const audioProducer = mediaState.current.producers["screen-audio"];
       if (audioProducer) {
         await audioProducer.pause();
-        streamingSocket.emit(
-          "pauseProducer",
-          { streamId, producerId: audioProducer.id },
-          (response: any) => {
-            if (response.error)
-              console.error(
-                "Error pausing screen-audio producer:",
-                response.error
-              );
-          }
-        );
+        if (streamingSocket) {
+          streamingSocket.emit(
+            "pauseProducer",
+            { streamId, producerId: audioProducer.id },
+            (response: any) => {
+              if (response.error)
+                console.error(
+                  "Error pausing screen-audio producer:",
+                  response.error
+                );
+            }
+          );
+        }
       }
 
       if (localScreenStream.current) {
@@ -844,21 +888,26 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
   const consumeTrack = async (
     producerId: string,
     userId: string,
-    kind: "audio" | "video", // Fixed: Use union type instead of string
+    kind: "audio" | "video",
     appData: any
   ) => {
     try {
-      // FIX: Use the device.canConsume method instead of mediasoupClient.canConsume
       if (
-        !mediaState.current.device?.canConsume({
-          producerId,
-          rtpCapabilities: mediaState.current.device.rtpCapabilities,
-        }) ||
+        !mediaState.current.device ||
+        !mediaState.current.device.rtpCapabilities ||
         !mediaState.current.receiveTransport ||
-        !streamingSocket ||
-        !streamId
+        !streamingSocket
       ) {
-        console.warn("Cannot consume track - not ready or compatible");
+        console.log(
+          "consum track states",
+          mediaState.current.device,
+          "<- device",
+          mediaState.current.receiveTransport,
+          "<-recvTransport",
+          streamingSocket,
+          "<-ssocket"
+        );
+        console.warn("Cannot consume track - device not ready");
         return;
       }
 
@@ -868,7 +917,6 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
           streamingSocket.emit(
             "consume",
             {
-              streamId,
               producerId,
               rtpCapabilities: mediaState.current.device!.rtpCapabilities,
             },
@@ -895,6 +943,13 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
       // Store the consumer
       mediaState.current.consumers[consumer.id] = consumer;
 
+      console.log(
+        mediaState.current.consumers,
+        "consumers in consume track function previous to resume",
+        consumer,
+        "from backend"
+      );
+
       // Resume the consumer
       await new Promise<void>((resolve, reject) => {
         streamingSocket.emit(
@@ -915,6 +970,10 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
 
       // Create a new stream from the consumer's track
       const stream = new MediaStream([consumer.track]);
+      console.log(
+        stream.getTracks(),
+        "stream got from the backend after consuminggggggggggggg"
+      );
       mediaState.current.consumerStreams[consumer.id] = stream;
 
       // Handle consumer events
@@ -1060,6 +1119,9 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
       const handleStreamUpdate = (data: any) => {
         console.log("Stream update received:", data);
         setStreamId(data?.id);
+        if (resolverRef.current) {
+          resolverRef.current(data?.id);
+        }
         setParticipants(data?.participants || []);
         setIsJoined(true);
       };
@@ -1114,6 +1176,18 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
         }
       };
 
+      streamingSocket.onAny((event: any, ...args: any[]) => {
+        console.log(`EVENT RECIEVED FE EVENT NAME: ${event}`, args);
+      });
+
+      const originalEmit = streamingSocket.emit.bind(streamingSocket);
+      (streamingSocket as any).emit = function <Ev extends string>(
+        event: Ev,
+        ...args: any[]
+      ): boolean {
+        console.log(`[SOCKET SEND] ${event}`, args);
+        return !!originalEmit(event, ...args);
+      };
       streamingSocket.on(
         "producerPaused",
         ({ producerId, userId }: { producerId: any; userId: any }) => {
@@ -1326,7 +1400,7 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
         streamingSocket.off("guestRequest", handleGuestRequest);
       };
     }
-  }, [streamingSocket, role, user, channelData, handleSettingsChange]);
+  }, [streamingSocket, role, user, channelData]);
 
   useEffect(() => {
     if (streamingSocket && isJoined && streamId) {

@@ -15,7 +15,7 @@ const Header: React.FC<HeaderProps> = ({streams}) => {
         </button>
         <div className="flex items-center gap-2">
           <span className="font-medium text-lg">
-            Live with Restream, March 22
+            Live with StreamRx, March 22
           </span>
           <button className="p-1 hover:bg-white/10 rounded-md">
             <Edit size={14} />

@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { io, Socket } from "socket.io-client";
 
 interface SocketHook {
   authSocket: Socket | null;
   communitySocket: Socket | null;
-  streamingSocket: Socket | any;
+  streamingSocket: Socket | null;
 }
 
 export const useSocket = () => {
@@ -13,6 +13,7 @@ export const useSocket = () => {
     communitySocket: null,
     streamingSocket: null,
   });
+  const streamingSocketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
     const authSocket = io(
@@ -51,21 +52,12 @@ export const useSocket = () => {
       }
     );
 
-    authSocket.on("connect_error", (error) => {
-      console.error("Auth Socket connection error:", error);
-    });
+    streamingSocketRef.current = streamingSocket;
 
-    communitySocket.on("connect_error", (error) => {
-      console.error("Community Socket connection error:", error);
-    });
-
+    // Socket event handlers
     authSocket.on("connect", () => {
       console.log("authSocket connected");
       authSocket.emit("message", "Hello Auth Server");
-    });
-
-    authSocket.on("response", (data) => {
-      console.log("Auth Server response:", data);
     });
 
     communitySocket.on("connect", () => {
@@ -73,17 +65,13 @@ export const useSocket = () => {
       communitySocket.emit("message", "Hello Community Server");
     });
 
-    communitySocket.on("response", (data) => {
-      console.log("Community Server response:", data);
-    });
-
     streamingSocket.on("connect", () => {
-      console.log("communitySocket connected");
-      communitySocket.emit("message", "Hello Community Server");
+      console.log("streamingSocket connected");
+      streamingSocket.emit("message", "Hello Streaming Server");
     });
 
-    streamingSocket.on("response", (data) => {
-      console.log("Community Server response:", data);
+    streamingSocket.on("disconnect", () => {
+      console.log("streamingSocket disconnected");
     });
 
     setSockets({
@@ -96,8 +84,9 @@ export const useSocket = () => {
       authSocket.disconnect();
       communitySocket.disconnect();
       streamingSocket.disconnect();
+      streamingSocketRef.current = null;
     };
   }, []);
 
-  return sockets;
+  return { ...sockets, streamingSocketRef };
 };
