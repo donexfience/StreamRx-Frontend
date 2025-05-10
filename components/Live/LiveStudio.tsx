@@ -67,6 +67,7 @@ const StreamView: FC<{
     element: HTMLVideoElement | null,
     stream: MediaStream
   ) => {
+    console.log(stream.getTracks(), "stream in the video ref function");
     if (element && stream) {
       element.srcObject = stream;
     }
@@ -89,7 +90,6 @@ const StreamView: FC<{
                   <video
                     autoPlay
                     playsInline
-                    muted={true}
                     ref={(el) => handleVideoRef(el, cameraStream)}
                     className="w-full h-auto bg-black rounded"
                   />
@@ -285,6 +285,15 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
         sctpParameters: transportParams.sctpParameters,
       });
 
+      console.log(
+        transportParams,
+        "<- transport params in the sendTransport from backend"
+      );
+      console.log(
+        sendTransport.getStats(),
+        "get status of the receive transport in the function"
+      );
+
       // Handle transport events
       sendTransport.on(
         "connect",
@@ -392,6 +401,11 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
         );
       });
 
+      console.log(
+        transportParams,
+        "transport params in recieveTransport from backend"
+      );
+
       const receiveTransport = mediaState.current.device.createRecvTransport({
         id: transportParams.id,
         iceParameters: transportParams.iceParameters,
@@ -433,6 +447,10 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
             errback(error as Error);
           }
         }
+      );
+      console.log(
+        receiveTransport.getStats(),
+        "get status of the receive transport in the function"
       );
 
       mediaState.current.receiveTransport = receiveTransport;
@@ -911,6 +929,8 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
         return;
       }
 
+      console.log(mediaState.current.receiveTransport, "<-recvTransport");
+
       // Request to consume the track
       const { id, rtpParameters } = await new Promise<any>(
         (resolve, reject) => {
@@ -1188,58 +1208,6 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
         console.log(`[SOCKET SEND] ${event}`, args);
         return !!originalEmit(event, ...args);
       };
-      streamingSocket.on(
-        "producerPaused",
-        ({ producerId, userId }: { producerId: any; userId: any }) => {
-          console.log(`Producer ${producerId} paused for user ${userId}`);
-          setParticipants((prev) =>
-            prev.map((p) =>
-              p.userId === userId
-                ? {
-                    ...p,
-                    cameraOn:
-                      p.cameraOn &&
-                      producerId !== mediaState.current.producers["camera"]?.id,
-                    micOn:
-                      p.micOn &&
-                      producerId !==
-                        mediaState.current.producers["microphone"]?.id,
-                    screenShareOn:
-                      p.screenShareOn &&
-                      producerId !== mediaState.current.producers["screen"]?.id,
-                  }
-                : p
-            )
-          );
-        }
-      );
-
-      // Handle producer resumed notification
-      streamingSocket.on(
-        "producerResumed",
-        ({ producerId, userId }: { producerId: any; userId: any }) => {
-          console.log(`Producer ${producerId} resumed for user ${userId}`);
-          setParticipants((prev) =>
-            prev.map((p) =>
-              p.userId === userId
-                ? {
-                    ...p,
-                    cameraOn:
-                      p.cameraOn ||
-                      producerId === mediaState.current.producers["camera"]?.id,
-                    micOn:
-                      p.micOn ||
-                      producerId ===
-                        mediaState.current.producers["microphone"]?.id,
-                    screenShareOn:
-                      p.screenShareOn ||
-                      producerId === mediaState.current.producers["screen"]?.id,
-                  }
-                : p
-            )
-          );
-        }
-      );
 
       // Handle producer closed notification
       streamingSocket.on(
@@ -1284,6 +1252,74 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
           return newStreams;
         });
         setParticipants((prev) => prev.filter((p) => p.userId !== userId));
+
+        streamingSocket.on(
+          "producerResumed",
+          ({
+            producerId,
+            userId,
+            appData,
+          }: {
+            producerId: any;
+            userId: any;
+            appData: any;
+          }) => {
+            console.log(`Producer ${producerId} resumed for user ${userId}`);
+            if (appData.source === "webcam") {
+              setParticipants((prev) =>
+                prev.map((p) =>
+                  p.userId === userId ? { ...p, cameraOn: true } : p
+                )
+              );
+            } else if (appData.source === "microphone") {
+              setParticipants((prev) =>
+                prev.map((p) =>
+                  p.userId === userId ? { ...p, micOn: true } : p
+                )
+              );
+            } else if (appData.source === "screen") {
+              setParticipants((prev) =>
+                prev.map((p) =>
+                  p.userId === userId ? { ...p, screenShareOn: true } : p
+                )
+              );
+            }
+          }
+        );
+
+        streamingSocket.on(
+          "producerResumed",
+          ({
+            producerId,
+            userId,
+            appData,
+          }: {
+            producerId: any;
+            userId: any;
+            appData: any;
+          }) => {
+            console.log(`Producer ${producerId} resumed for user ${userId}`);
+            if (appData.source === "webcam") {
+              setParticipants((prev) =>
+                prev.map((p) =>
+                  p.userId === userId ? { ...p, cameraOn: true } : p
+                )
+              );
+            } else if (appData.source === "microphone") {
+              setParticipants((prev) =>
+                prev.map((p) =>
+                  p.userId === userId ? { ...p, micOn: true } : p
+                )
+              );
+            } else if (appData.source === "screen") {
+              setParticipants((prev) =>
+                prev.map((p) =>
+                  p.userId === userId ? { ...p, screenShareOn: true } : p
+                )
+              );
+            }
+          }
+        );
       });
       streamingSocket.on("streamUpdate", handleStreamUpdate);
       streamingSocket.on("streamSettings", handleStreamSettings);
@@ -1292,103 +1328,6 @@ const LIVESTUDIO: React.FC<LIVESTUDIOProps> = ({
       streamingSocket.on("error", handleError);
       streamingSocket.on("guestRequest", handleGuestRequest);
       streamingSocket.on("participantJoined", handleParticipantJoined);
-      streamingSocket.on(
-        "producerPaused",
-        ({
-          producerId,
-          userId,
-          appData,
-        }: {
-          producerId: any;
-          userId: any;
-          appData: any;
-        }) => {
-          console.log(`Producer ${producerId} paused for user ${userId}`);
-          if (appData.source === "webcam") {
-            setParticipants((prev) =>
-              prev.map((p) =>
-                p.userId === userId ? { ...p, cameraOn: false } : p
-              )
-            );
-          } else if (appData.source === "microphone") {
-            setParticipants((prev) =>
-              prev.map((p) =>
-                p.userId === userId ? { ...p, micOn: false } : p
-              )
-            );
-          } else if (appData.source === "screen") {
-            setParticipants((prev) =>
-              prev.map((p) =>
-                p.userId === userId ? { ...p, screenShareOn: false } : p
-              )
-            );
-          }
-        }
-      );
-
-      streamingSocket.on(
-        "producerResumed",
-        ({
-          producerId,
-          userId,
-          appData,
-        }: {
-          producerId: any;
-          userId: any;
-          appData: any;
-        }) => {
-          console.log(`Producer ${producerId} resumed for user ${userId}`);
-          if (appData.source === "webcam") {
-            setParticipants((prev) =>
-              prev.map((p) =>
-                p.userId === userId ? { ...p, cameraOn: true } : p
-              )
-            );
-          } else if (appData.source === "microphone") {
-            setParticipants((prev) =>
-              prev.map((p) => (p.userId === userId ? { ...p, micOn: true } : p))
-            );
-          } else if (appData.source === "screen") {
-            setParticipants((prev) =>
-              prev.map((p) =>
-                p.userId === userId ? { ...p, screenShareOn: true } : p
-              )
-            );
-          }
-        }
-      );
-
-      streamingSocket.on(
-        "producerResumed",
-        ({
-          producerId,
-          userId,
-          appData,
-        }: {
-          producerId: any;
-          userId: any;
-          appData: any;
-        }) => {
-          console.log(`Producer ${producerId} resumed for user ${userId}`);
-          if (appData.source === "webcam") {
-            setParticipants((prev) =>
-              prev.map((p) =>
-                p.userId === userId ? { ...p, cameraOn: true } : p
-              )
-            );
-          } else if (appData.source === "microphone") {
-            setParticipants((prev) =>
-              prev.map((p) => (p.userId === userId ? { ...p, micOn: true } : p))
-            );
-          } else if (appData.source === "screen") {
-            setParticipants((prev) =>
-              prev.map((p) =>
-                p.userId === userId ? { ...p, screenShareOn: true } : p
-              )
-            );
-          }
-        }
-      );
 
       return () => {
         streamingSocket.off("streamUpdate", handleStreamUpdate);
